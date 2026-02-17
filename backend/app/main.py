@@ -3,7 +3,8 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app import config as app_config
@@ -85,6 +86,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -124,5 +126,10 @@ async def unhandled_exception_handler(request, exc):
 
 
 @app.get("/")
-async def root():
-    return {"message": "保全公司管理系統 HR API", "docs": "/docs"}
+def home():
+    return {"message": "曜川系統運行中"}
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse("static/login.html")

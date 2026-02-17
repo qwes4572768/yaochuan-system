@@ -1,35 +1,31 @@
-# python/venv
+ï»¿# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv
+.venv/
+venv/
 backend/.venv/
 backend/.venv_wsl/
-**/.venv/
-**/.venv_wsl/
-**/__pycache__/
-**/*.pyc
-ECHO ¤w±Ò°Ê¡C
-# secrets
-backend/.env
-backend/.env.*
-ECHO ¤w±Ò°Ê¡C
-# runtime data
-backend/hr.db
-backend/uploads/
-ECHO ¤w±Ò°Ê¡C
-# frontend
-frontend/node_modules/
-frontend/.next/
-frontend/dist/
-frontend/build/
-ECHO ¤w±Ò°Ê¡C
-.DS_Store
 
-# do NOT commit env or backups
+# env
 .env
 backend/.env
-backend/.env.*
-backend/server/backup/
-backend/server/backup/**
+
+# node
+node_modules/
+frontend/node_modules/
+
+# build
+dist/
+build/
+frontend/dist/
+frontend/build/
+
+# db / uploads / logs
+*.db
 backend/hr.db
+uploads/
 backend/uploads/
-cd
-dir
-python
