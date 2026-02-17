@@ -45,8 +45,13 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const { access_token } = await authApi.login(username, password)
-      login(access_token)
+      const data = await authApi.login(username, password)
+      const token = data.access_token
+      if (!token) {
+        throw new Error('Login failed: no token returned')
+      }
+      localStorage.setItem('access_token', token)
+      login(token)
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '登入失敗，請稍後再試')

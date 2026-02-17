@@ -1,6 +1,7 @@
 import { translateError } from './utils/errorMsg'
 
-const BASE = '/api'
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const BASE = `${API_BASE}/api`
 const AUTH_TOKEN_KEY = 'access_token'
 const PATROL_DEVICE_TOKEN_KEY = 'patrol_device_token'
 
@@ -29,7 +30,7 @@ export function clearPatrolDeviceToken(): void {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getAuthToken()
+  const token = localStorage.getItem('access_token')
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options?.headers as Record<string, string>),
@@ -65,11 +66,32 @@ export interface MeResponse {
 }
 
 export const authApi = {
-  login: (username: string, password: string) =>
-    request<LoginResponse>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
+  login: async (username: string, password: string) => {
+    let response: Response
+    try {
+      response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      })
+    } catch (e) {
+      throw new Error(translateError(e instanceof Error ? e.message : '無法連線伺服器'))
+    }
+    if (!response.ok) {
+      const text = await response.text()
+      const err = text ? JSON.parse(text).detail || text : response.statusText
+      throw new Error(translateError(String(err)))
+    }
+    const data = (await response.json()) as { access_token?: string }
+    const token = data.access_token
+    if (!token) {
+      throw new Error('Login failed: no token returned')
+    }
+    localStorage.setItem('access_token', token)
+    return { access_token: token }
+  },
   me: () => request<MeResponse>('/auth/me'),
 }
 
