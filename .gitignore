@@ -21,3 +21,15 @@ frontend/dist/
 frontend/build/
 ECHO ¤w±Ò°Ê¡C
 .DS_Store
+
+# do NOT commit env or backups
+.env
+backend/.env
+backend/.env.*
+backend/server/backup/
+backend/server/backup/**
+backend/hr.db
+backend/uploads/
+cd
+dir
+python
