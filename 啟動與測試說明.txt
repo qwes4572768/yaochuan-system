@@ -1,0 +1,61 @@
+保全公司管理系統 · 人事管理 — 安裝與測試
+
+【零】若電腦沒有 Node.js / npm（前端需要）
+────────────────────────────────────
+• 前端需要 Node.js（內含 npm）。若執行 frontend\1_install.bat 時出現
+  「'npm' is not recognized...」，請先安裝 Node.js：
+
+  1. 開啟瀏覽器，前往：https://nodejs.org
+  2. 下載「LTS」版本（建議 Windows 64-bit .msi）
+  3. 執行安裝程式，依指示完成安裝（可全部用預設）
+  4. 安裝完成後「關閉並重新開啟」命令提示字元或 Cursor
+  5. 再執行 frontend\1_install.bat
+
+
+【一】安裝依賴（只需做一次）
+────────────────────────────────────
+1. 後端：
+   雙擊執行：backend\1_install.bat
+   （會建立虛擬環境、安裝套件、複製 .env、執行資料庫遷移）
+
+2. 前端：
+   雙擊執行：frontend\1_install.bat
+   （會安裝 npm 套件；若沒有 Node.js，會提示並開啟官網）
+
+
+【二】啟動服務（每次要測試時）
+────────────────────────────────────
+1. 先啟動後端：
+   雙擊執行：backend\2_start_backend.bat
+   看到 "Uvicorn running on http://0.0.0.0:8000" 表示後端已啟動。
+   ※ 此視窗請保持開啟。
+
+2. 再啟動前端：
+   雙擊執行：frontend\2_start_frontend.bat
+   看到 "Local: http://localhost:5173/" 表示前端已啟動。
+   ※ 此視窗請保持開啟。
+
+
+【三】開啟網址做測試（沒有啟動器時）
+────────────────────────────────────
+方法一：用瀏覽器開網址
+   • 開啟 Chrome、Edge 或 Firefox
+   • 在「網址列」輸入：http://localhost:5173
+   • 按 Enter
+
+方法二：用 Windows 執行
+   • 按鍵盤 Win + R
+   • 輸入：http://localhost:5173
+   • 按 Enter（會用預設瀏覽器開啟）
+
+方法三：從「開始」搜尋
+   • 在 Windows 搜尋框輸入：chrome 或 edge 或 firefox
+   • 開啟瀏覽器後，在網址列輸入：localhost:5173
+
+
+【四】注意
+────────────────────────────────────
+• 一定要先執行「2_start_backend.bat」，再執行「2_start_frontend.bat」。
+• 兩個 .bat 的視窗都要保持開啟，關掉任一個該服務就會停止。
+• 若 5173 打不開，請確認前端視窗有出現 "Local: http://localhost:5173/"。
+• 若畫面顯示錯誤，請確認後端視窗有出現 "Uvicorn running"。

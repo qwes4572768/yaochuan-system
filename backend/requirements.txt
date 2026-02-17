@@ -1,0 +1,20 @@
+# 保全公司管理系統 - 後端依賴（建議 Python 3.12，預設 SQLite）
+fastapi>=0.115,<1
+uvicorn[standard]>=0.27,<1
+sqlalchemy>=2.0.25,<3
+aiosqlite>=0.19,<1
+alembic>=1.13,<2
+# 若改用 PostgreSQL，請自行安裝：pip install psycopg2-binary asyncpg
+pydantic>=2.7,<3
+pydantic-settings>=2.4,<3
+python-multipart>=0.0.9
+openpyxl>=3.1
+pandas>=2.0
+xlrd>=2.0
+odfpy>=1.4
+python-docx>=1.1
+pyyaml>=6.0
+cryptography>=42
+pytest>=8
+pytest-asyncio>=0.23
+apscheduler>=3.10

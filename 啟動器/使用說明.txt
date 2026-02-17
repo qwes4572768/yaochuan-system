@@ -1,0 +1,29 @@
+保全公司管理系統 － 啟動器說明
+================================
+
+本資料夾集中放置所有啟動與安裝程式，方便一次找到。
+
+【日常使用】
+  一鍵啟動（前後端）.bat  →  同時啟動後端與前端，只開一個視窗（最常用）
+
+【分開啟動時】
+  僅啟動後端.bat  →  只開後端 API (port 8000)
+  僅啟動前端.bat  →  只開前端網頁 (port 5173)
+  開啟系統網頁.bat  →  用瀏覽器開啟 http://localhost:5173（前後端已啟動時用）
+
+【第一次或重裝時】
+  安裝後端.bat  →  安裝 Python 套件與資料庫（需先裝好 Python）
+  安裝前端.bat  →  安裝 npm 套件（需先裝好 Node.js）
+  修復前端.bat  →  刪除 node_modules 與 package-lock 後重裝（遇 rollup 錯誤時可試）
+
+※ 專案根目錄的「啟動.bat」會自動呼叫「一鍵啟動（前後端）.bat」，兩處任選其一即可。
+
+【若出現「Device Guard policy」或「Application Control policy has blocked」】
+  表示公司或 Windows 安全原則擋住了 .venv 或 node_modules 裡的程式。
+  建議作法：
+  1. 聯絡 IT 將此專案路徑加入允許清單，或
+  2. 將專案複製到允許執行的磁碟/資料夾（例如 D:\projects\資通系統）再執行。
+
+【若前端出現「Cannot find module @rollup/rollup-win32-x64-msvc」】
+  先刪除 frontend 裡的 node_modules 與 package-lock.json，再重新執行「安裝前端.bat」。
+  若仍被 Application Control 阻擋，同上請 IT 放行或改放專案路徑。

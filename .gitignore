@@ -1,0 +1,23 @@
+# python/venv
+backend/.venv/
+backend/.venv_wsl/
+**/.venv/
+**/.venv_wsl/
+**/__pycache__/
+**/*.pyc
+ECHO 已啟動。
+# secrets
+backend/.env
+backend/.env.*
+ECHO 已啟動。
+# runtime data
+backend/hr.db
+backend/uploads/
+ECHO 已啟動。
+# frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+ECHO 已啟動。
+.DS_Store

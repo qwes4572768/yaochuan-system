@@ -1,0 +1,51 @@
+{
+  "tables": [
+    {
+      "type": "labor_insurance",
+      "version": "2025-01",
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "total_rate": 0.115,
+      "note": "勞保費率 11.5%，雇主 70%、個人 20%、政府 10%",
+      "items": [
+        { "level_name": "26400", "salary_min": 25201, "salary_max": 26400, "insured_salary": 26400, "employee_rate": 0.2, "employer_rate": 0.7, "gov_rate": 0.1 },
+        { "level_name": "27600", "salary_min": 26401, "salary_max": 27600, "insured_salary": 27600, "employee_rate": 0.2, "employer_rate": 0.7, "gov_rate": 0.1 },
+        { "level_name": "30300", "salary_min": 28801, "salary_max": 30300, "insured_salary": 30300, "employee_rate": 0.2, "employer_rate": 0.7, "gov_rate": 0.1 },
+        { "level_name": "603000", "salary_min": 595101, "salary_max": 999999, "insured_salary": 603000, "employee_rate": 0.2, "employer_rate": 0.7, "gov_rate": 0.1 }
+      ]
+    },
+    {
+      "type": "health_insurance",
+      "version": "2025-01",
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "total_rate": 0.0517,
+      "note": "健保費率 5.17%，雇主 60%、個人 30%",
+      "items": [
+        { "level_name": "all", "salary_min": 0, "salary_max": 999999999, "insured_salary": null, "employee_rate": 0.3, "employer_rate": 0.6, "gov_rate": null }
+      ]
+    },
+    {
+      "type": "occupational_accident",
+      "version": "2025-01",
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "total_rate": 0.0022,
+      "note": "職災費率 0.22%，全雇主負擔",
+      "items": [
+        { "level_name": "all", "salary_min": 0, "salary_max": 999999999, "insured_salary": null, "employee_rate": 0, "employer_rate": 1, "gov_rate": null }
+      ]
+    },
+    {
+      "type": "labor_pension",
+      "version": "2025-01",
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "total_rate": 0.06,
+      "note": "勞退 6%，雇主提繳",
+      "items": [
+        { "level_name": "all", "salary_min": 0, "salary_max": 999999999, "insured_salary": null, "employee_rate": 0, "employer_rate": 0.06, "gov_rate": null }
+      ]
+    }
+  ]
+}

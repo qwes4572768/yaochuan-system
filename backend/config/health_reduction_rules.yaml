@@ -1,0 +1,30 @@
+# 健保分攤/減免規則（適用員工本人與眷屬）
+# 規則集中於此，可擴充；試算時依序套用，取最優（個人負擔最低）
+# 每條規則可設：適用對象（本人/眷屬）、條件、結果（倍率 0~1，0=全免）
+
+# A) 桃園市、台北市市民 65 歲以上眷屬：健保負擔 = 0 元（僅眷屬）
+rules:
+  - id: senior_dependent_city_zero
+    name: "六都 65 歲以上眷屬健保補助"
+    description: "桃園市、台北市市民 65 歲以上眷屬，健保個人負擔 0 元"
+    applies_to: dependent_only   # employee_only | dependent_only | both
+    condition:
+      type: senior_in_cities
+      min_age: 65
+      cities: ["桃園市", "台北市"]
+    result:
+      multiplier: 0   # 個人負擔 = 原本 * multiplier
+
+  # B) 身障分攤（員工本人 + 眷屬都適用）
+  - id: disability_discount
+    name: "身障健保補助"
+    description: "輕度 3/4、中度 1/2、重度/極重度 0"
+    applies_to: both
+    condition:
+      type: has_disability_level
+    result_by_level:
+      輕度: 0.75    # 原本個人負擔 * 3/4
+      中度: 0.5     # 原本個人負擔 * 1/2
+      重度: 0
+      極重度: 0
+    default_multiplier: 1   # 無身障等級時不減免
