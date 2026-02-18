@@ -676,7 +676,6 @@ export const patrolApi = {
   adminUnbindDeviceBinding: (id: number) =>
     request<import('./types').PatrolUnbindResponse>(`/patrol/device-bindings/${id}/unbind`, {
       method: 'POST',
-      body: JSON.stringify({}),
     }),
 }
 

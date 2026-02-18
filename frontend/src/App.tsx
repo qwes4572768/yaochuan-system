@@ -132,12 +132,12 @@ function AppLayout() {
                 永久巡邏點 QR
               </NavLink>
               <NavLink
-                to="/patrol-admin/device-bindings"
+                to="/admin/patrol-devices"
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded ${isActive ? 'bg-slate-600' : 'hover:bg-slate-700'}`
                 }
               >
-                裝置綁定管理
+                巡邏設備管理
               </NavLink>
               <NavLink
                 to="/patrol-admin/points"
@@ -178,6 +178,7 @@ function AppLayout() {
             <Route path="/patrol-admin/bindings" element={<PatrolBindingAdminPage />} />
             <Route path="/patrol-admin/bindings/legacy" element={<PatrolBindingLegacyPage />} />
             <Route path="/patrol-admin/device-bindings" element={<PatrolDeviceBindingsAdminPage />} />
+            <Route path="/admin/patrol-devices" element={<PatrolDeviceBindingsAdminPage />} />
             <Route path="/patrol-admin/points" element={<PatrolPointsPage />} />
             <Route path="/patrol-admin/logs" element={<PatrolLogsPage />} />
           </Routes>

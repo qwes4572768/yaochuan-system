@@ -1014,11 +1014,13 @@ class PatrolDevicePasswordUpdateResponse(BaseModel):
 
 class PatrolDeviceBindingAdminItem(BaseModel):
     id: int
+    binding_id: int
     device_public_id: str
     is_active: bool
     employee_name: Optional[str] = None
     site_name: Optional[str] = None
     bound_at: Optional[datetime] = None
+    unbound_at: Optional[datetime] = None
     last_seen_at: Optional[datetime] = None
     ua: Optional[str] = None
     platform: Optional[str] = None
@@ -1026,6 +1028,8 @@ class PatrolDeviceBindingAdminItem(BaseModel):
     language: Optional[str] = None
     timezone: Optional[str] = None
     screen: Optional[str] = None
+    screen_size: Optional[str] = None
+    ip_address: Optional[str] = None
     password_set: bool = False
     device_info: Optional[Dict[str, Optional[str]]] = None
     model_config = ConfigDict(from_attributes=True)

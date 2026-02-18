@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react'
-import { formatApiError, patrolApi } from '../api'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ApiError, patrolApi } from '../api'
 import type { PatrolDeviceBindingAdminItem } from '../types'
 
 export default function PatrolDeviceBindingsAdminPage() {
@@ -11,6 +11,27 @@ export default function PatrolDeviceBindingsAdminPage() {
   const [site, setSite] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [total, setTotal] = useState(0)
+
+  const logsExportUrl = useMemo(() => patrolApi.exportLogsUrl(), [])
+
+  function formatErrorWithDetail(err: unknown, fallback: string): string {
+    if (err instanceof ApiError) {
+      const status = err.status ?? 'unknown'
+      const detail = err.rawDetail || err.message || fallback
+      if (status === 401 || status === 403) {
+        return '請先登入管理系統'
+      }
+      return `status=${status} detail=${detail}`
+    }
+    if (err instanceof Error) return err.message || fallback
+    return fallback
+  }
+
+  function toDisplayTime(v?: string): string {
+    if (!v) return '-'
+    const d = new Date(v)
+    return Number.isNaN(d.getTime()) ? v : d.toLocaleString()
+  }
 
   async function load() {
     setLoading(true)
@@ -26,7 +47,7 @@ export default function PatrolDeviceBindingsAdminPage() {
       setRows(res.items)
       setTotal(res.total)
     } catch (err) {
-      setError(formatApiError(err, '讀取裝置綁定列表失敗'))
+      setError(formatErrorWithDetail(err, '讀取裝置綁定列表失敗'))
     } finally {
       setLoading(false)
     }
@@ -49,7 +70,7 @@ export default function PatrolDeviceBindingsAdminPage() {
       await patrolApi.resetDeviceBindingPassword(row.id, password.trim())
       await load()
     } catch (err) {
-      setError(formatApiError(err, '重設密碼失敗'))
+      setError(formatErrorWithDetail(err, '重設密碼失敗'))
     }
   }
 
@@ -61,14 +82,62 @@ export default function PatrolDeviceBindingsAdminPage() {
       await patrolApi.adminUnbindDeviceBinding(row.id)
       await load()
     } catch (err) {
-      setError(formatApiError(err, '解除綁定失敗'))
+      setError(formatErrorWithDetail(err, '解除綁定失敗'))
     }
+  }
+
+  function onExportCsv() {
+    const headers = [
+      'binding_id',
+      'device_public_id',
+      'employee_name',
+      'site_name',
+      'platform',
+      'browser',
+      'language',
+      'screen_size',
+      'timezone',
+      'ip_address',
+      'is_active',
+      'bound_at',
+      'unbound_at',
+    ]
+    const escapeCell = (value: unknown) => {
+      const text = String(value ?? '')
+      if (text.includes('"') || text.includes(',') || text.includes('\n')) {
+        return `"${text.replace(/"/g, '""')}"`
+      }
+      return text
+    }
+    const rowsText = rows.map((row) => ([
+      row.binding_id ?? row.id,
+      row.device_public_id,
+      row.employee_name ?? '',
+      row.site_name ?? '',
+      row.platform ?? '',
+      row.browser ?? '',
+      row.language ?? '',
+      row.screen_size ?? row.screen ?? '',
+      row.timezone ?? '',
+      row.ip_address ?? '',
+      row.is_active ? 'true' : 'false',
+      row.bound_at ?? '',
+      row.unbound_at ?? '',
+    ].map(escapeCell).join(',')))
+    const csv = '\uFEFF' + [headers.join(','), ...rowsText].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `patrol_device_bindings_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">巡邏裝置綁定後台管理</h1>
-      <p className="text-sm text-slate-600">可檢視綁定狀態、重設密碼與解除綁定（不顯示明碼）。</p>
+      <h1 className="text-2xl font-semibold">巡邏設備管理</h1>
+      <p className="text-sm text-slate-600">管理員可查詢、重設密碼、解除綁定與匯出。</p>
 
       <form onSubmit={onSearch} className="rounded border border-slate-300 bg-white p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
         <input
@@ -104,17 +173,36 @@ export default function PatrolDeviceBindingsAdminPage() {
       </form>
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
-      <div className="text-sm text-slate-600">共 {total} 筆</div>
+      <div className="flex items-center gap-2">
+        <div className="text-sm text-slate-600">共 {total} 筆</div>
+        <button
+          type="button"
+          onClick={onExportCsv}
+          className="rounded border border-slate-300 px-3 py-1.5 text-xs"
+        >
+          匯出綁定清單 CSV
+        </button>
+        <a
+          href={logsExportUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded border border-sky-300 px-3 py-1.5 text-xs text-sky-700"
+        >
+          匯出巡邏紀錄 Excel
+        </a>
+      </div>
 
       <div className="rounded border border-slate-300 bg-white overflow-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th className="text-left p-2">devicePublicId</th>
-              <th className="text-left p-2">狀態</th>
-              <th className="text-left p-2">員工 / 案場</th>
-              <th className="text-left p-2">bound_at / last_seen_at</th>
+              <th className="text-left p-2">binding_id</th>
+              <th className="text-left p-2">device_public_id</th>
+              <th className="text-left p-2">employee_name</th>
+              <th className="text-left p-2">site_name</th>
               <th className="text-left p-2">裝置資訊</th>
+              <th className="text-left p-2">is_active</th>
+              <th className="text-left p-2">bound_at / unbound_at</th>
               <th className="text-left p-2">密碼</th>
               <th className="text-left p-2">操作</th>
             </tr>
@@ -123,26 +211,33 @@ export default function PatrolDeviceBindingsAdminPage() {
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-200 align-top">
                 <td className="p-2">
+                  <div className="font-mono text-xs">{row.binding_id ?? row.id}</div>
+                </td>
+                <td className="p-2">
                   <div className="font-mono text-xs break-all max-w-[220px]">{row.device_public_id}</div>
                 </td>
                 <td className="p-2">
+                  <div>{row.employee_name || '-'}</div>
+                </td>
+                <td className="p-2">
+                  <div>{row.site_name || '-'}</div>
+                </td>
+                <td className="p-2">
+                  <div className="text-xs">platform: {row.platform || '-'}</div>
+                  <div className="text-xs">browser: {row.browser || '-'}</div>
+                  <div className="text-xs">language: {row.language || '-'}</div>
+                  <div className="text-xs">screen_size: {row.screen_size || row.screen || '-'}</div>
+                  <div className="text-xs">timezone: {row.timezone || '-'}</div>
+                  <div className="text-xs">ip_address: {row.ip_address || '-'}</div>
+                </td>
+                <td className="p-2">
                   <span className={`text-xs px-2 py-1 rounded ${row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
-                    {row.is_active ? 'is_active' : 'inactive'}
+                    {row.is_active ? 'true' : 'false'}
                   </span>
                 </td>
                 <td className="p-2">
-                  <div>{row.employee_name || '-'}</div>
-                  <div className="text-slate-500">{row.site_name || '-'}</div>
-                </td>
-                <td className="p-2">
-                  <div>{row.bound_at ? new Date(row.bound_at).toLocaleString() : '-'}</div>
-                  <div className="text-slate-500">{row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : '-'}</div>
-                </td>
-                <td className="p-2">
-                  <div className="text-xs break-all">UA: {row.ua || '-'}</div>
-                  <div className="text-xs">平台: {row.platform || '-'} / {row.browser || '-'}</div>
-                  <div className="text-xs">語言: {row.language || '-'} / 時區: {row.timezone || '-'}</div>
-                  <div className="text-xs">螢幕: {row.screen || '-'}</div>
+                  <div>{toDisplayTime(row.bound_at)}</div>
+                  <div className="text-slate-500">{toDisplayTime(row.unbound_at)}</div>
                 </td>
                 <td className="p-2">{row.password_set ? '已設定' : '未設定'}</td>
                 <td className="p-2 space-y-2">
@@ -165,7 +260,7 @@ export default function PatrolDeviceBindingsAdminPage() {
             ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-3 text-slate-500">查無裝置綁定資料。</td>
+                <td colSpan={9} className="p-3 text-slate-500">查無裝置綁定資料。</td>
               </tr>
             )}
           </tbody>

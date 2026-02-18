@@ -481,11 +481,13 @@ export interface PatrolLog {
 
 export interface PatrolDeviceBindingAdminItem {
   id: number
+  binding_id: number
   device_public_id: string
   is_active: boolean
   employee_name?: string
   site_name?: string
   bound_at?: string
+  unbound_at?: string
   last_seen_at?: string
   ua?: string
   platform?: string
@@ -493,6 +495,8 @@ export interface PatrolDeviceBindingAdminItem {
   language?: string
   timezone?: string
   screen?: string
+  screen_size?: string
+  ip_address?: string
   password_set: boolean
   device_info?: {
     ua?: string

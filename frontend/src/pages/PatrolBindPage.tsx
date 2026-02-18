@@ -200,11 +200,11 @@ export default function PatrolBindPage() {
           <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 space-y-3 text-sm">
             <p className="text-amber-200">未提供綁定資訊。請使用一次性綁定碼或永久裝置 QR 進入。</p>
             <div className="flex flex-wrap gap-2">
-              <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold">
-                回到綁定 QR 管理頁
+              <Link to="/patrol-admin/bindings" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold">
+                回到綁定碼頁
               </Link>
-              <Link to="/patrol/bind/permanent" className="rounded border border-slate-500 px-3 py-2">
-                前往永久裝置入口
+              <Link to="/admin/patrol-devices" className="rounded border border-slate-500 px-3 py-2">
+                巡邏設備管理
               </Link>
             </div>
           </div>
@@ -249,11 +249,11 @@ export default function PatrolBindPage() {
               <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200 space-y-2">
                 <p>此綁定碼已失效/不存在，請重新產生一次性綁定碼，或改用永久裝置入口（推薦）。</p>
                 <div className="flex flex-wrap gap-2">
-                  <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-xs">
-                    回到 legacy 管理頁
+                  <Link to="/patrol-admin/bindings" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-xs">
+                    回到綁定碼頁
                   </Link>
-                  <Link to="/patrol/bind/permanent" className="rounded border border-slate-500 px-3 py-2 text-xs">
-                    前往永久裝置入口
+                  <Link to="/admin/patrol-devices" className="rounded border border-slate-500 px-3 py-2 text-xs">
+                    巡邏設備管理
                   </Link>
                 </div>
               </div>

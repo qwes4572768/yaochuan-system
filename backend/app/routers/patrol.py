@@ -230,14 +230,19 @@ async def _upsert_active_patrol_device(
     return device
 
 
-def _binding_to_admin_item(binding: models.PatrolDeviceBinding) -> schemas.PatrolDeviceBindingAdminItem:
+def _binding_to_admin_item(
+    binding: models.PatrolDeviceBinding,
+    device: models.PatrolDevice | None = None,
+) -> schemas.PatrolDeviceBindingAdminItem:
     return schemas.PatrolDeviceBindingAdminItem(
         id=binding.id,
+        binding_id=binding.id,
         device_public_id=binding.device_public_id,
         is_active=binding.is_active,
         employee_name=binding.employee_name,
         site_name=binding.site_name,
         bound_at=binding.bound_at,
+        unbound_at=device.unbound_at if device else None,
         last_seen_at=binding.last_seen_at,
         ua=binding.user_agent,
         platform=binding.platform,
@@ -245,6 +250,8 @@ def _binding_to_admin_item(binding: models.PatrolDeviceBinding) -> schemas.Patro
         language=binding.language,
         timezone=binding.timezone,
         screen=binding.screen_size,
+        screen_size=binding.screen_size,
+        ip_address=device.ip_address if device else None,
         password_set=bool(binding.password_hash),
         device_info={
             "ua": binding.user_agent,
@@ -747,8 +754,17 @@ async def list_device_bindings(
     stmt = stmt.order_by(models.PatrolDeviceBinding.bound_at.desc(), models.PatrolDeviceBinding.id.desc()).limit(limit).offset(offset)
     items = (await db.scalars(stmt)).all()
     total = int(await db.scalar(count_stmt) or 0)
+    latest_device_map: dict[str, models.PatrolDevice] = {}
+    for item in items:
+        device = await db.scalar(
+            select(models.PatrolDevice)
+            .where(models.PatrolDevice.device_public_id == item.device_public_id)
+            .order_by(models.PatrolDevice.id.desc())
+        )
+        if device:
+            latest_device_map[item.device_public_id] = device
     return schemas.PatrolDeviceBindingAdminListResponse(
-        items=[_binding_to_admin_item(i) for i in items],
+        items=[_binding_to_admin_item(i, latest_device_map.get(i.device_public_id)) for i in items],
         total=total,
     )
 
