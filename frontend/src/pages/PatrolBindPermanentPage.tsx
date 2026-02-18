@@ -40,6 +40,9 @@ export default function PatrolBindPermanentPage() {
   const [password, setPassword] = useState('')
   const [loginEmployeeName, setLoginEmployeeName] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [updatingPassword, setUpdatingPassword] = useState(false)
   const [loggingIn, setLoggingIn] = useState(false)
   const [unbinding, setUnbinding] = useState(false)
   const [binding, setBinding] = useState(false)
@@ -133,6 +136,28 @@ export default function PatrolBindPermanentPage() {
     }
   }
 
+  async function onUpdatePassword(e: FormEvent) {
+    e.preventDefault()
+    if (!devicePublicId) return
+    setUpdatingPassword(true)
+    setActionError('')
+    try {
+      await patrolApi.updatePasswordByDevicePublicId(devicePublicId, {
+        current_password: currentPassword.trim(),
+        new_password: newPassword.trim(),
+        employee_name: loginEmployeeName.trim() || undefined,
+      })
+      setCurrentPassword('')
+      setNewPassword('')
+      setLoginPassword('')
+      await loadStatus()
+    } catch (err) {
+      setActionError(formatApiError(err, '修改密碼失敗'))
+    } finally {
+      setUpdatingPassword(false)
+    }
+  }
+
   const ua = status?.device_info?.ua || status?.ua || fingerprint.userAgent
   const platform = status?.device_info?.platform || status?.platform || fingerprint.platform
   const browser = status?.device_info?.browser || status?.browser || fingerprint.browser
@@ -191,6 +216,7 @@ export default function PatrolBindPermanentPage() {
         <div className="grid grid-cols-1 gap-2 text-sm">
           <div><span className="text-slate-400">devicePublicId：</span><span className="break-all">{devicePublicId}</span></div>
           <div><span className="text-slate-400">綁定狀態：</span><span>{loading ? '查詢中...' : (status?.is_bound ? '已綁定' : '未綁定')}</span></div>
+          <div><span className="text-slate-400">綁定時間：</span><span>{status?.bound_at ? new Date(status.bound_at).toLocaleString() : '-'}</span></div>
           <div><span className="text-slate-400">User Agent：</span><span className="break-all">{ua}</span></div>
           <div><span className="text-slate-400">平台：</span><span>{platform || '-'}</span></div>
           <div><span className="text-slate-400">瀏覽器：</span><span>{browser || '-'}</span></div>
@@ -239,7 +265,38 @@ export default function PatrolBindPermanentPage() {
               </button>
             </form>
 
-            <div>
+            <form onSubmit={onUpdatePassword} className="space-y-3 rounded border border-slate-700 p-3">
+              <div className="text-sm text-slate-300">修改密碼</div>
+              <div>
+                <label className="block text-sm mb-1">目前密碼</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">新密碼</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={updatingPassword || !currentPassword.trim() || !newPassword.trim()}
+                className="w-full rounded bg-amber-400 text-slate-950 font-semibold py-2 disabled:opacity-60"
+              >
+                {updatingPassword ? '修改中...' : '修改密碼'}
+              </button>
+            </form>
+
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() => void onUnbind()}

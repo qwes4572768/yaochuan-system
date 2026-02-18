@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { formatApiError, patrolApi, setPatrolDeviceToken } from '../api'
+import { ApiError, formatApiError, patrolApi, setPatrolDeviceToken } from '../api'
 import type { DeviceFingerprint, PatrolBindingStatus } from '../types'
 
 function detectBrowser(ua: string): string {
@@ -42,6 +42,7 @@ export default function PatrolBindPage() {
   const [unbindLoading, setUnbindLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [errorDetailRaw, setErrorDetailRaw] = useState('')
   const [codeInvalidHint, setCodeInvalidHint] = useState(false)
   const navigate = useNavigate()
   const fingerprint = useMemo(() => buildFingerprint(), [])
@@ -71,6 +72,7 @@ export default function PatrolBindPage() {
       return
     }
     setError('')
+    setErrorDetailRaw('')
     setCodeInvalidHint(false)
     setLoading(true)
     try {
@@ -85,10 +87,25 @@ export default function PatrolBindPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      const msg = formatApiError(err, '綁定失敗')
-      setError(msg)
-      if (msg.includes('已過期') || msg.includes('已使用') || msg.includes('失效') || msg.includes('不存在')) {
+      const raw = err instanceof ApiError ? (err.rawDetail || '') : ''
+      const status = err instanceof ApiError ? err.status : undefined
+      const normalizedRaw = raw.trim()
+      setErrorDetailRaw(normalizedRaw || (err instanceof Error ? err.message : '未知錯誤'))
+
+      const isRouteNotFound = status === 404 && normalizedRaw === 'Not Found'
+      const isCodeInvalid = (status === 400 || status === 404) && (
+        normalizedRaw.includes('綁定碼不存在')
+        || normalizedRaw.includes('綁定碼已過期')
+        || normalizedRaw.includes('綁定碼已使用')
+      )
+
+      if (isRouteNotFound) {
+        setError('系統版本未更新，請通知管理員重新部署後端')
+      } else if (isCodeInvalid) {
+        setError('綁定碼無效，請回到綁定碼頁重新產生')
         setCodeInvalidHint(true)
+      } else {
+        setError(formatApiError(err, '綁定失敗'))
       }
     } finally {
       setLoading(false)
@@ -209,6 +226,7 @@ export default function PatrolBindPage() {
               />
             </div>
             {error && <p className="text-sm text-rose-300">{error}</p>}
+            {errorDetailRaw && <p className="text-xs text-rose-200">detail: {errorDetailRaw}</p>}
             {codeInvalidHint && (
               <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200 space-y-2">
                 <p>此綁定碼已失效/不存在，請重新產生一次性綁定碼，或改用永久裝置入口（推薦）。</p>

@@ -409,6 +409,18 @@ export interface PatrolDeviceUnbindRequest {
   device_fingerprint: DeviceFingerprint
 }
 
+export interface PatrolDevicePasswordUpdateRequest {
+  current_password: string
+  new_password: string
+  employee_name?: string
+}
+
+export interface PatrolDevicePasswordUpdateResponse {
+  success: boolean
+  message: string
+  updated_at: string
+}
+
 export interface PatrolUnbindRequest {
   employee_name: string
   password: string

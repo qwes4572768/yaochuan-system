@@ -7,11 +7,13 @@ const PATROL_DEVICE_TOKEN_KEY = 'patrol_device_token'
 
 export class ApiError extends Error {
   status?: number
+  rawDetail?: string
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, rawDetail?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.rawDetail = rawDetail
   }
 }
 
@@ -71,15 +73,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const text = await res.text()
   if (!res.ok) {
     let err: unknown = res.statusText
+    let rawDetail = res.statusText
     if (text) {
       try {
-        err = JSON.parse(text).detail || text
+        const parsed = JSON.parse(text).detail || text
+        err = parsed
+        rawDetail = Array.isArray(parsed) ? parsed.map((e: { msg?: string }) => e?.msg || String(e)).join(', ') : String(parsed)
       } catch {
         err = text
+        rawDetail = text
       }
     }
     const msg = Array.isArray(err) ? err.map((e: { msg?: string }) => e?.msg || e).join(', ') : err
-    throw new ApiError(translateError(String(msg)), res.status)
+    throw new ApiError(translateError(String(msg)), res.status, rawDetail)
   }
   try {
     return (text ? JSON.parse(text) : undefined) as T
@@ -558,6 +564,11 @@ export const patrolApi = {
   unbindByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceUnbindRequest) =>
     request<import('./types').PatrolUnbindResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/unbind`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updatePasswordByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDevicePasswordUpdateRequest) =>
+    request<import('./types').PatrolDevicePasswordUpdateResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/password`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
   bindingStatus: (deviceFingerprint: import('./types').DeviceFingerprint) =>

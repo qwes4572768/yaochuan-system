@@ -673,6 +673,43 @@ async def start_by_device_public_id(
     )
 
 
+@router.patch("/device/{device_public_id}/password", response_model=schemas.PatrolDevicePasswordUpdateResponse, summary="永久裝置修改密碼")
+async def update_device_password_by_public_id(
+    device_public_id: str,
+    body: schemas.PatrolDevicePasswordUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    normalized_public_id = device_public_id.strip()
+    binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
+    )
+    if not binding or not binding.is_active:
+        raise HTTPException(status_code=404, detail="此永久裝置尚未綁定，請先綁定")
+    if not binding.password_hash or not _pwd_context.verify(body.current_password.strip(), binding.password_hash):
+        raise HTTPException(status_code=401, detail="目前密碼錯誤")
+    if body.employee_name and binding.employee_name and body.employee_name.strip() != binding.employee_name:
+        raise HTTPException(status_code=401, detail="員工姓名與綁定資料不符")
+
+    now = datetime.utcnow()
+    new_hash = _pwd_context.hash(body.new_password.strip())
+    binding.password_hash = new_hash
+    binding.last_seen_at = now
+    await db.execute(
+        models.PatrolDevice.__table__.update()
+        .where(
+            models.PatrolDevice.device_public_id == normalized_public_id,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .values(password_hash=new_hash)
+    )
+    await db.flush()
+    return schemas.PatrolDevicePasswordUpdateResponse(
+        success=True,
+        message="密碼修改成功",
+        updated_at=now,
+    )
+
+
 @router.post("/device/{device_public_id}/unbind", response_model=schemas.PatrolUnbindResponse, summary="永久裝置解除綁定")
 async def unbind_by_device_public_id(
     device_public_id: str,

@@ -998,6 +998,18 @@ class PatrolDeviceUnbindRequest(BaseModel):
     device_fingerprint: DeviceFingerprintPayload
 
 
+class PatrolDevicePasswordUpdateRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=1, max_length=128)
+    employee_name: Optional[str] = Field(None, min_length=1, max_length=80)
+
+
+class PatrolDevicePasswordUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    updated_at: datetime
+
+
 class PatrolDeviceBindingAdminItem(BaseModel):
     id: int
     device_public_id: str
