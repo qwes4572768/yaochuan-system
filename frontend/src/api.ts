@@ -512,18 +512,31 @@ export const patrolApi = {
     return (text ? JSON.parse(text) : undefined) as import('./types').PatrolDeviceInfo
   },
   listPoints: () => request<import('./types').PatrolPoint[]>('/patrol/points'),
-  createPoint: (data: { point_code: string; point_name: string; site_name?: string | null; site_id?: number | null }) =>
+  createPoint: (data: { point_code: string; point_name: string; name?: string; site_name?: string | null; site_id?: number | null; location?: string | null; is_active?: boolean }) =>
     request<import('./types').PatrolPoint>('/patrol/points', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updatePoint: (id: number, data: { point_code?: string; point_name?: string; site_name?: string | null; site_id?: number | null }) =>
+  updatePoint: (id: number, data: { point_code?: string; point_name?: string; site_name?: string | null; site_id?: number | null; location?: string | null; is_active?: boolean }) =>
     request<import('./types').PatrolPoint>(`/patrol/points/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
   deletePoint: (id: number) => request<void>(`/patrol/points/${id}`, { method: 'DELETE' }),
-  getPointQr: (id: number) => request<import('./types').PatrolPointQr>(`/patrol/points/${id}/qr`),
+  getPointQr: (publicId: string) => request<import('./types').PatrolPointQr>(`/patrol/points/${publicId}/qr`),
+  checkinByPublicId: async (publicId: string, payload: { employee_id?: number; employee_name?: string; device_info?: string }) => {
+    const res = await fetch(`${BASE}/patrol/checkin/${encodeURIComponent(publicId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const text = await res.text()
+    if (!res.ok) {
+      const err = text ? JSON.parse(text).detail || text : res.statusText
+      throw new Error(translateError(String(err)))
+    }
+    return (text ? JSON.parse(text) : undefined) as import('./types').PatrolCheckinResponse
+  },
   checkin: async (qrValue: string) => {
     const token = getPatrolDeviceToken()
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }

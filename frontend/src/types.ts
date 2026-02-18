@@ -315,22 +315,28 @@ export interface PatrolDeviceInfo {
 
 export interface PatrolPoint {
   id: number
+  public_id: string
   point_code: string
   point_name: string
   site_id?: number | null
   site_name?: string | null
+  location?: string | null
+  is_active: boolean
+  qr_url: string
   created_at: string
   updated_at: string
 }
 
 export interface PatrolPointQr {
-  point_id: number
+  public_id: string
   point_code: string
+  qr_url: string
   qr_value: string
 }
 
 export interface PatrolCheckinResponse {
   id: number
+  employee_id?: number | null
   employee_name: string
   site_name: string
   point_code: string

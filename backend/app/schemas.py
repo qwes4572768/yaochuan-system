@@ -909,10 +909,18 @@ class PatrolPointBase(BaseModel):
     point_name: str = Field(..., min_length=1, max_length=120)
     site_id: Optional[int] = None
     site_name: Optional[str] = Field(None, max_length=120)
+    location: Optional[str] = Field(None, max_length=255)
+    is_active: bool = True
 
 
-class PatrolPointCreate(PatrolPointBase):
-    pass
+class PatrolPointCreate(BaseModel):
+    point_code: str = Field(..., min_length=1, max_length=80)
+    point_name: Optional[str] = Field(None, min_length=1, max_length=120)
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    site_id: Optional[int] = None
+    site_name: Optional[str] = Field(None, max_length=120)
+    location: Optional[str] = Field(None, max_length=255)
+    is_active: bool = True
 
 
 class PatrolPointUpdate(BaseModel):
@@ -920,18 +928,23 @@ class PatrolPointUpdate(BaseModel):
     point_name: Optional[str] = Field(None, min_length=1, max_length=120)
     site_id: Optional[int] = None
     site_name: Optional[str] = Field(None, max_length=120)
+    location: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
 
 
 class PatrolPointRead(PatrolPointBase):
     id: int
+    public_id: str
+    qr_url: str
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 
 class PatrolPointQrRead(BaseModel):
-    point_id: int
+    public_id: str
     point_code: str
+    qr_url: str
     qr_value: str
 
 
@@ -939,8 +952,16 @@ class PatrolCheckinRequest(BaseModel):
     qr_value: str = Field(..., min_length=1, max_length=1000)
 
 
+class PatrolPublicCheckinRequest(BaseModel):
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = Field(None, min_length=1, max_length=80)
+    timestamp: Optional[datetime] = None
+    device_info: Optional[str] = None
+
+
 class PatrolCheckinResponse(BaseModel):
     id: int
+    employee_id: Optional[int] = None
     employee_name: str
     site_name: str
     point_code: str

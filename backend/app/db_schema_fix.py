@@ -2,6 +2,7 @@
 與 009 migration 邏輯一致，確保未跑 migration 時 /api/sites 也能正常。"""
 import logging
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -46,6 +47,14 @@ SQLITE_ADD_COLUMNS: dict[str, List[Tuple[str, str]]] = {
         ("deductions_total", "REAL"),
         ("net_salary", "REAL"),
         ("created_at", "DATETIME"),
+    ],
+    "patrol_points": [
+        ("public_id", "TEXT"),
+        ("location", "TEXT"),
+        ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+    ],
+    "patrol_logs": [
+        ("employee_id", "INTEGER"),
     ],
 }
 
@@ -92,6 +101,19 @@ def fix_sqlite_missing_columns(db_path: Path) -> bool:
                     continue
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
                 logger.info("%s: added column %s", table, col_name)
+            if table == "patrol_points":
+                # 既有資料補上永久 public_id，避免 QR 失效
+                cur.execute("SELECT id, public_id FROM patrol_points")
+                for row_id, public_id in cur.fetchall():
+                    if public_id:
+                        continue
+                    cur.execute(
+                        "UPDATE patrol_points SET public_id=? WHERE id=?",
+                        (str(uuid.uuid4()), row_id),
+                    )
+                cur.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_patrol_points_public_id ON patrol_points (public_id)"
+                )
         conn.commit()
         return True
     except Exception as e:

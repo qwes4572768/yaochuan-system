@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom'
 import logoUrl from './assets/brand-logo.png'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
@@ -17,9 +17,15 @@ import SiteHistory from './pages/SiteHistory'
 import SecurityPayroll from './pages/SecurityPayroll'
 import PatrolBindPage from './pages/PatrolBindPage'
 import PatrolPage from './pages/PatrolPage'
+import PatrolPublicCheckinPage from './pages/PatrolPublicCheckinPage'
 import PatrolBindingAdminPage from './pages/PatrolBindingAdminPage'
 import PatrolPointsPage from './pages/PatrolPointsPage'
 import PatrolLogsPage from './pages/PatrolLogsPage'
+
+function PatrolPublicCheckinRoute() {
+  const { publicId = '' } = useParams()
+  return <PatrolPublicCheckinPage publicId={publicId} />
+}
 
 function LogoutButton() {
   const { logout } = useAuth()
@@ -173,6 +179,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/patrol/bind" element={<PatrolBindPage />} />
+          <Route path="/patrol/checkin/:publicId" element={<PatrolPublicCheckinRoute />} />
           <Route path="/patrol" element={<PatrolPage />} />
           <Route path="*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
         </Routes>

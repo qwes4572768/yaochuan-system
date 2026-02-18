@@ -7,12 +7,16 @@ type FormState = {
   point_code: string
   point_name: string
   site_name: string
+  location: string
+  is_active: boolean
 }
 
 const EMPTY_FORM: FormState = {
   point_code: '',
   point_name: '',
   site_name: '',
+  location: '',
+  is_active: true,
 }
 
 function downloadDataUrl(dataUrl: string, filename: string) {
@@ -52,6 +56,8 @@ export default function PatrolPointsPage() {
       point_code: row.point_code,
       point_name: row.point_name,
       site_name: row.site_name || '',
+      location: row.location || '',
+      is_active: row.is_active,
     })
   }
 
@@ -64,12 +70,16 @@ export default function PatrolPointsPage() {
           point_code: form.point_code,
           point_name: form.point_name,
           site_name: form.site_name || null,
+          location: form.location || null,
+          is_active: form.is_active,
         })
       } else {
         await patrolApi.createPoint({
           point_code: form.point_code,
           point_name: form.point_name,
           site_name: form.site_name || null,
+          location: form.location || null,
+          is_active: form.is_active,
         })
       }
       setForm(EMPTY_FORM)
@@ -93,8 +103,8 @@ export default function PatrolPointsPage() {
 
   async function onGenQr(row: PatrolPoint) {
     try {
-      const payload = await patrolApi.getPointQr(row.id)
-      const dataUrl = await QRCode.toDataURL(payload.qr_value, { width: 260, margin: 1 })
+      const payload = await patrolApi.getPointQr(row.public_id)
+      const dataUrl = await QRCode.toDataURL(payload.qr_url, { width: 260, margin: 1 })
       setQrMap((prev) => ({ ...prev, [row.id]: { payload, dataUrl } }))
     } catch (err) {
       setError(err instanceof Error ? err.message : '產生 QR 失敗')
@@ -125,6 +135,20 @@ export default function PatrolPointsPage() {
           placeholder="案場名稱"
           className="rounded border border-slate-300 px-3 py-2"
         />
+        <input
+          value={form.location}
+          onChange={(e) => setForm((s) => ({ ...s, location: e.target.value }))}
+          placeholder="位置說明（選填）"
+          className="rounded border border-slate-300 px-3 py-2"
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setForm((s) => ({ ...s, is_active: e.target.checked }))}
+          />
+          啟用此巡邏點
+        </label>
         <button className="rounded bg-sky-500 text-white font-semibold px-3 py-2">
           {editingId ? '更新巡邏點' : '新增巡邏點'}
         </button>
@@ -137,6 +161,8 @@ export default function PatrolPointsPage() {
               <th className="text-left p-2">編號</th>
               <th className="text-left p-2">名稱</th>
               <th className="text-left p-2">案場</th>
+              <th className="text-left p-2">位置</th>
+              <th className="text-left p-2">狀態</th>
               <th className="text-left p-2">操作</th>
             </tr>
           </thead>
@@ -146,6 +172,8 @@ export default function PatrolPointsPage() {
                 <td className="p-2">{r.point_code}</td>
                 <td className="p-2">{r.point_name}</td>
                 <td className="p-2">{r.site_name || '-'}</td>
+                <td className="p-2">{r.location || '-'}</td>
+                <td className="p-2">{r.is_active ? '啟用' : '停用'}</td>
                 <td className="p-2 space-x-2">
                   <button className="underline" onClick={() => bindEdit(r)}>編輯</button>
                   <button className="underline text-rose-600" onClick={() => void onDelete(r.id)}>刪除</button>
@@ -153,7 +181,7 @@ export default function PatrolPointsPage() {
                   {qrMap[r.id] && (
                     <div className="mt-2 space-y-2">
                       <img src={qrMap[r.id].dataUrl} alt={`point-${r.id}-qr`} className="w-40 h-40 border border-slate-200" />
-                      <div className="text-xs break-all max-w-sm">{qrMap[r.id].payload.qr_value}</div>
+                      <div className="text-xs break-all max-w-sm">{qrMap[r.id].payload.qr_url}</div>
                       <button
                         className="rounded border border-slate-300 px-2 py-1 text-xs"
                         onClick={() => downloadDataUrl(qrMap[r.id].dataUrl, `patrol_point_${r.point_code}.png`)}
@@ -166,7 +194,7 @@ export default function PatrolPointsPage() {
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td className="p-3 text-slate-500" colSpan={4}>尚無資料</td></tr>
+              <tr><td className="p-3 text-slate-500" colSpan={6}>尚無資料</td></tr>
             )}
           </tbody>
         </table>

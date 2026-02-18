@@ -465,10 +465,13 @@ class PatrolPoint(Base):
     __tablename__ = "patrol_points"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, comment="對外公開固定 UUID")
     point_code: Mapped[str] = mapped_column(String(80), unique=True, index=True, comment="巡邏點編號")
     point_name: Mapped[str] = mapped_column(String(120), comment="巡邏點名稱")
     site_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True)
     site_name: Mapped[Optional[str]] = mapped_column(String(120), index=True, comment="案場名稱（快照）")
+    location: Mapped[Optional[str]] = mapped_column(String(255), comment="巡邏點位置說明")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="巡邏點是否啟用")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -480,7 +483,8 @@ class PatrolLog(Base):
     __tablename__ = "patrol_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    device_id: Mapped[int] = mapped_column(ForeignKey("patrol_devices.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_devices.id", ondelete="SET NULL"), nullable=True, index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True)
     point_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_points.id", ondelete="SET NULL"), nullable=True, index=True)
     employee_name: Mapped[str] = mapped_column(String(80), index=True)
     site_name: Mapped[str] = mapped_column(String(120), index=True)
@@ -493,5 +497,5 @@ class PatrolLog(Base):
     device_info: Mapped[Optional[str]] = mapped_column(Text, comment="設備資訊快照 JSON")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
-    device: Mapped["PatrolDevice"] = relationship("PatrolDevice", back_populates="logs")
+    device: Mapped[Optional["PatrolDevice"]] = relationship("PatrolDevice", back_populates="logs")
     point: Mapped[Optional["PatrolPoint"]] = relationship("PatrolPoint", back_populates="logs")

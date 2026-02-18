@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import secrets
+import uuid
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from urllib.parse import parse_qs, quote, urlparse
@@ -35,6 +36,11 @@ def _client_ip(request: Request) -> str | None:
 def _build_bind_url(code: str) -> str:
     base = settings.public_base_url.rstrip("/")
     return f"{base}/patrol/bind?code={quote(code)}"
+
+
+def _build_point_checkin_url(public_id: str) -> str:
+    base = settings.public_base_url.rstrip("/")
+    return f"{base}/patrol/checkin/{quote(public_id)}"
 
 
 def _extract_device_token(
@@ -69,6 +75,13 @@ async def _resolve_point_from_qr(db: AsyncSession, qr_value: str) -> models.Patr
 
     parsed = urlparse(v)
     if parsed.scheme:
+        path_parts = [p for p in (parsed.path or "").split("/") if p]
+        if len(path_parts) >= 3 and path_parts[-2] == "checkin":
+            public_id = path_parts[-1].strip()
+            if public_id:
+                point = await db.scalar(select(models.PatrolPoint).where(models.PatrolPoint.public_id == public_id))
+                if point:
+                    return point
         q = parse_qs(parsed.query or "")
         point_id_raw = (q.get("point_id") or [None])[0]
         nonce = (q.get("nonce") or [None])[0]
@@ -95,7 +108,26 @@ async def _resolve_point_from_qr(db: AsyncSession, qr_value: str) -> models.Patr
     point = await db.scalar(select(models.PatrolPoint).where(models.PatrolPoint.point_code == v))
     if point:
         return point
+    point = await db.scalar(select(models.PatrolPoint).where(models.PatrolPoint.public_id == v))
+    if point:
+        return point
     raise HTTPException(status_code=404, detail="巡邏點不存在")
+
+
+def _point_to_read(point: models.PatrolPoint) -> schemas.PatrolPointRead:
+    return schemas.PatrolPointRead(
+        id=point.id,
+        public_id=point.public_id,
+        point_code=point.point_code,
+        point_name=point.point_name,
+        site_id=point.site_id,
+        site_name=point.site_name,
+        location=point.location,
+        is_active=point.is_active,
+        qr_url=_build_point_checkin_url(point.public_id),
+        created_at=point.created_at,
+        updated_at=point.updated_at,
+    )
 
 
 @router.post("/binding-codes", response_model=schemas.PatrolBindingCodeRead, summary="產生手機綁定 QR code")
@@ -182,7 +214,7 @@ async def list_points(
     if site_name and site_name.strip():
         stmt = stmt.where(models.PatrolPoint.site_name.ilike(f"%{site_name.strip()}%"))
     points = (await db.scalars(stmt)).all()
-    return [schemas.PatrolPointRead.model_validate(p) for p in points]
+    return [_point_to_read(p) for p in points]
 
 
 @router.post("/points", response_model=schemas.PatrolPointRead, status_code=201, summary="新增巡邏點")
@@ -190,18 +222,24 @@ async def create_point(
     body: schemas.PatrolPointCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    point_name = (body.name or body.point_name or "").strip()
+    if not point_name:
+        raise HTTPException(status_code=422, detail="巡邏點名稱不可為空")
     point = models.PatrolPoint(
+        public_id=str(uuid.uuid4()),
         point_code=body.point_code.strip(),
-        point_name=body.point_name.strip(),
+        point_name=point_name,
         site_id=body.site_id,
         site_name=(body.site_name or "").strip() or None,
+        location=(body.location or "").strip() or None,
+        is_active=bool(body.is_active),
     )
     db.add(point)
     try:
         await db.flush()
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="巡邏點編號已存在") from exc
-    return schemas.PatrolPointRead.model_validate(point)
+    return _point_to_read(point)
 
 
 @router.patch("/points/{point_id}", response_model=schemas.PatrolPointRead, summary="更新巡邏點")
@@ -222,11 +260,15 @@ async def update_point(
         point.site_id = data["site_id"]
     if "site_name" in data:
         point.site_name = (data["site_name"] or "").strip() or None
+    if "location" in data:
+        point.location = (data["location"] or "").strip() or None
+    if "is_active" in data and data["is_active"] is not None:
+        point.is_active = bool(data["is_active"])
     try:
         await db.flush()
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="巡邏點編號已存在") from exc
-    return schemas.PatrolPointRead.model_validate(point)
+    return _point_to_read(point)
 
 
 @router.delete("/points/{point_id}", status_code=204, summary="刪除巡邏點")
@@ -240,18 +282,79 @@ async def delete_point(
     await db.delete(point)
 
 
-@router.get("/points/{point_id}/qr", response_model=schemas.PatrolPointQrRead, summary="產生巡邏點 QR 內容")
+@router.get("/points/{public_id}/qr", response_model=schemas.PatrolPointQrRead, summary="取得巡邏點固定 QR URL")
 async def get_point_qr(
-    point_id: int,
+    public_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    point = await db.get(models.PatrolPoint, point_id)
+    point = await db.scalar(select(models.PatrolPoint).where(models.PatrolPoint.public_id == public_id.strip()))
+    if not point and public_id.isdigit():
+        point = await db.get(models.PatrolPoint, int(public_id))
     if not point:
         raise HTTPException(status_code=404, detail="巡邏點不存在")
-    nonce = secrets.token_hex(6)
-    sig = _sign_point_payload(point.id, nonce)
-    qr_value = f"patrolpoint://checkin?point_id={point.id}&nonce={nonce}&sig={sig}"
-    return schemas.PatrolPointQrRead(point_id=point.id, point_code=point.point_code, qr_value=qr_value)
+    qr_url = _build_point_checkin_url(point.public_id)
+    return schemas.PatrolPointQrRead(
+        public_id=point.public_id,
+        point_code=point.point_code,
+        qr_url=qr_url,
+        qr_value=qr_url,
+    )
+
+
+@router.post("/checkin/{public_id}", response_model=schemas.PatrolCheckinResponse, summary="固定 public_id 掃碼打卡")
+async def checkin_by_public_id(
+    public_id: str,
+    body: schemas.PatrolPublicCheckinRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    point = await db.scalar(select(models.PatrolPoint).where(models.PatrolPoint.public_id == public_id.strip()))
+    if not point:
+        raise HTTPException(status_code=404, detail="巡邏點不存在")
+    if not point.is_active:
+        raise HTTPException(status_code=400, detail="此巡邏點已停用")
+
+    employee_id = body.employee_id
+    employee_name = (body.employee_name or "").strip()
+    if employee_id is not None:
+        employee = await db.get(models.Employee, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="員工不存在")
+        employee_name = employee.name
+    if not employee_name:
+        raise HTTPException(status_code=422, detail="請提供 employee_id 或 employee_name")
+
+    when = body.timestamp or datetime.now()
+    ampm = "上午" if when.hour < 12 else "下午"
+    qr_url = _build_point_checkin_url(point.public_id)
+    log = models.PatrolLog(
+        device_id=None,
+        employee_id=employee_id,
+        point_id=point.id,
+        employee_name=employee_name,
+        site_name=point.site_name or "",
+        point_code=point.point_code,
+        point_name=point.point_name,
+        checkin_date=when.date(),
+        checkin_time=when.time().replace(microsecond=0),
+        checkin_ampm=ampm,
+        qr_value=qr_url,
+        device_info=body.device_info,
+        created_at=datetime.utcnow(),
+    )
+    db.add(log)
+    await db.flush()
+    return schemas.PatrolCheckinResponse(
+        id=log.id,
+        employee_id=log.employee_id,
+        employee_name=log.employee_name,
+        site_name=log.site_name,
+        point_code=log.point_code,
+        point_name=log.point_name,
+        checkin_date=log.checkin_date,
+        checkin_time=log.checkin_time,
+        checkin_ampm=log.checkin_ampm,
+        created_at=log.created_at,
+    )
 
 
 @router.post("/checkin", response_model=schemas.PatrolCheckinResponse, summary="巡邏打點")
@@ -269,6 +372,7 @@ async def checkin(
     ampm = "上午" if now.hour < 12 else "下午"
     log = models.PatrolLog(
         device_id=device.id,
+        employee_id=None,
         point_id=point.id,
         employee_name=device.employee_name,
         site_name=device.site_name,
@@ -285,6 +389,7 @@ async def checkin(
     await db.flush()
     return schemas.PatrolCheckinResponse(
         id=log.id,
+        employee_id=log.employee_id,
         employee_name=log.employee_name,
         site_name=log.site_name,
         point_code=log.point_code,
