@@ -2,6 +2,34 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { ApiError, patrolApi } from '../api'
 import type { PatrolDeviceBindingAdminItem } from '../types'
 
+/** 格式：yyyy/MM/dd HH:mm，無值回傳 "-" */
+function formatDateTime(v?: string): string {
+  if (!v) return '-'
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return v
+  const y = d.getFullYear()
+  const M = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  return `${y}/${M}/${day} ${h}:${m}`
+}
+
+/** 綁定狀態：已綁定 | 未綁定 | 停用 */
+function getBindingStatus(
+  row: PatrolDeviceBindingAdminItem
+): 'bound' | 'unbound' | 'disabled' {
+  if (!row.is_active && row.unbound_at) return 'disabled'
+  if (row.is_active && row.employee_name?.trim() && row.site_name?.trim()) return 'bound'
+  return 'unbound'
+}
+
+const BINDING_STATUS_MAP = {
+  bound: { label: '已綁定', className: 'bg-emerald-100 text-emerald-800' },
+  unbound: { label: '未綁定', className: 'bg-amber-100 text-amber-800' },
+  disabled: { label: '停用', className: 'bg-slate-200 text-slate-700' },
+} as const
+
 export default function PatrolDeviceBindingsAdminPage() {
   const [rows, setRows] = useState<PatrolDeviceBindingAdminItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -11,6 +39,8 @@ export default function PatrolDeviceBindingsAdminPage() {
   const [site, setSite] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [total, setTotal] = useState(0)
+  /** 詳情 modal：顯示哪一筆的裝置完整資訊（row.id） */
+  const [detailRowId, setDetailRowId] = useState<number | null>(null)
 
   const logsExportUrl = useMemo(() => patrolApi.exportLogsUrl(), [])
 
@@ -27,10 +57,18 @@ export default function PatrolDeviceBindingsAdminPage() {
     return fallback
   }
 
-  function toDisplayTime(v?: string): string {
-    if (!v) return '-'
-    const d = new Date(v)
-    return Number.isNaN(d.getTime()) ? v : d.toLocaleString()
+  /** 裝置 ID 顯示：前 8 碼 + … */
+  function shortDeviceId(id: string): string {
+    if (!id) return '-'
+    return id.length <= 8 ? id : `${id.slice(0, 8)}…`
+  }
+
+  function copyFullId(id: string) {
+    if (!id) return
+    navigator.clipboard.writeText(id).then(
+      () => {},
+      () => {}
+    )
   }
 
   async function load() {
@@ -134,6 +172,8 @@ export default function PatrolDeviceBindingsAdminPage() {
     URL.revokeObjectURL(url)
   }
 
+  const detailRow = detailRowId != null ? rows.find((r) => r.id === detailRowId) : null
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">巡邏設備管理</h1>
@@ -143,7 +183,7 @@ export default function PatrolDeviceBindingsAdminPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜尋（裝置ID/員工/案場）"
+          placeholder="搜尋（裝置ID／員工／案場）"
           className="rounded border border-slate-300 px-3 py-2"
         />
         <input
@@ -168,7 +208,7 @@ export default function PatrolDeviceBindingsAdminPage() {
           <option value="inactive">已解除</option>
         </select>
         <button type="submit" disabled={loading} className="rounded bg-sky-500 text-white font-semibold px-4 py-2 disabled:opacity-60">
-          {loading ? '查詢中...' : '搜尋/篩選'}
+          {loading ? '查詢中...' : '搜尋／篩選'}
         </button>
       </form>
 
@@ -196,76 +236,168 @@ export default function PatrolDeviceBindingsAdminPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th className="text-left p-2">binding_id</th>
-              <th className="text-left p-2">device_public_id</th>
-              <th className="text-left p-2">employee_name</th>
-              <th className="text-left p-2">site_name</th>
+              <th className="text-left p-2">裝置 ID</th>
+              <th className="text-left p-2">員工</th>
+              <th className="text-left p-2">案場</th>
+              <th className="text-left p-2">綁定狀態</th>
               <th className="text-left p-2">裝置資訊</th>
-              <th className="text-left p-2">is_active</th>
-              <th className="text-left p-2">bound_at / unbound_at</th>
-              <th className="text-left p-2">密碼</th>
+              <th className="text-left p-2">綁定時間</th>
+              <th className="text-left p-2">解除時間</th>
+              <th className="text-left p-2">密碼狀態</th>
               <th className="text-left p-2">操作</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-200 align-top">
-                <td className="p-2">
-                  <div className="font-mono text-xs">{row.binding_id ?? row.id}</div>
-                </td>
-                <td className="p-2">
-                  <div className="font-mono text-xs break-all max-w-[220px]">{row.device_public_id}</div>
-                </td>
-                <td className="p-2">
-                  <div>{row.employee_name || '-'}</div>
-                </td>
-                <td className="p-2">
-                  <div>{row.site_name || '-'}</div>
-                </td>
-                <td className="p-2">
-                  <div className="text-xs">platform: {row.platform || '-'}</div>
-                  <div className="text-xs">browser: {row.browser || '-'}</div>
-                  <div className="text-xs">language: {row.language || '-'}</div>
-                  <div className="text-xs">screen_size: {row.screen_size || row.screen || '-'}</div>
-                  <div className="text-xs">timezone: {row.timezone || '-'}</div>
-                  <div className="text-xs">ip_address: {row.ip_address || '-'}</div>
-                </td>
-                <td className="p-2">
-                  <span className={`text-xs px-2 py-1 rounded ${row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
-                    {row.is_active ? 'true' : 'false'}
-                  </span>
-                </td>
-                <td className="p-2">
-                  <div>{toDisplayTime(row.bound_at)}</div>
-                  <div className="text-slate-500">{toDisplayTime(row.unbound_at)}</div>
-                </td>
-                <td className="p-2">{row.password_set ? '已設定' : '未設定'}</td>
-                <td className="p-2 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => void onResetPassword(row)}
-                    className="w-full rounded border border-sky-300 px-2 py-1 text-xs text-sky-700"
-                  >
-                    重設密碼
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void onUnbind(row)}
-                    className="w-full rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
-                  >
-                    解除綁定
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const bindingStatus = getBindingStatus(row)
+              const statusConf = BINDING_STATUS_MAP[bindingStatus]
+              return (
+                <tr key={row.id} className="border-t border-slate-200 align-top">
+                  <td className="p-2">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="font-mono text-xs">{shortDeviceId(row.device_public_id)}</span>
+                      <button
+                        type="button"
+                        onClick={() => copyFullId(row.device_public_id)}
+                        className="rounded border border-slate-300 px-1.5 py-0.5 text-xs hover:bg-slate-100"
+                      >
+                        複製完整ID
+                      </button>
+                    </div>
+                  </td>
+                  <td className="p-2">{row.employee_name?.trim() || '-'}</td>
+                  <td className="p-2">{row.site_name?.trim() || '-'}</td>
+                  <td className="p-2">
+                    <span className={`inline-block text-xs px-2 py-1 rounded ${statusConf.className}`}>
+                      {statusConf.label}
+                    </span>
+                  </td>
+                  <td className="p-2">
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {(row.platform || row.browser || row.timezone || row.ip_address) && (
+                        <>
+                          {row.platform && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">
+                              {row.platform}
+                            </span>
+                          )}
+                          {row.browser && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">
+                              {row.browser}
+                            </span>
+                          )}
+                          {row.timezone && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">
+                              {row.timezone}
+                            </span>
+                          )}
+                          {row.ip_address && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">
+                              IP:{row.ip_address}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDetailRowId(row.id)}
+                        className="rounded border border-sky-300 px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-50"
+                      >
+                        詳情
+                      </button>
+                    </div>
+                  </td>
+                  <td className="p-2">{formatDateTime(row.bound_at)}</td>
+                  <td className="p-2 text-slate-500">{formatDateTime(row.unbound_at)}</td>
+                  <td className="p-2">{row.password_set ? '已設定' : '未設定'}</td>
+                  <td className="p-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void onResetPassword(row)}
+                      className="w-full rounded border border-sky-300 px-2 py-1 text-xs text-sky-700 hover:bg-sky-50"
+                    >
+                      重設設備密碼
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onUnbind(row)}
+                      className="w-full rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                    >
+                      解除設備綁定
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-3 text-slate-500">查無裝置綁定資料。</td>
+                <td colSpan={9} className="p-3 text-slate-500">
+                  查無裝置綁定資料。
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* 裝置詳情 Modal */}
+      {detailRow != null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDetailRowId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="device-detail-title"
+        >
+          <div
+            className="rounded-lg border border-slate-300 bg-white shadow-lg max-w-lg w-full max-h-[80vh] overflow-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="device-detail-title" className="text-lg font-semibold mb-3">
+              裝置完整資訊
+            </h2>
+            <dl className="grid grid-cols-1 gap-2 text-sm">
+              <div>
+                <dt className="text-slate-500">平台</dt>
+                <dd className="font-mono">{detailRow.platform || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">瀏覽器</dt>
+                <dd className="font-mono">{detailRow.browser || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">語言</dt>
+                <dd className="font-mono">{detailRow.language || detailRow.device_info?.lang || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">螢幕</dt>
+                <dd className="font-mono">{detailRow.screen_size || detailRow.screen || detailRow.device_info?.screen || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">時區</dt>
+                <dd className="font-mono">{detailRow.timezone || detailRow.device_info?.tz || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">IP</dt>
+                <dd className="font-mono">{detailRow.ip_address || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">User-Agent</dt>
+                <dd className="font-mono text-xs break-all">{detailRow.ua || detailRow.device_info?.ua || '-'}</dd>
+              </div>
+            </dl>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDetailRowId(null)}
+                className="rounded bg-slate-200 px-3 py-1.5 text-sm hover:bg-slate-300"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
