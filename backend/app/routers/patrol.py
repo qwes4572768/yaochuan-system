@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
+from passlib.context import CryptContext
 from sqlalchemy import Select, and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from app.database import get_db
 router = APIRouter(prefix="/api/patrol", tags=["patrol"])
 
 _PATROL_QR_SECRET = "patrol-qr-secret-change-me"
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _client_ip(request: Request) -> str | None:
@@ -56,6 +58,12 @@ def _extract_device_token(
     raise HTTPException(status_code=401, detail="缺少設備憑證，請先完成手機綁定")
 
 
+def _normalize_device_fingerprint(fingerprint: dict) -> str:
+    data = dict(fingerprint or {})
+    data.pop("ip", None)
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 def _sign_point_payload(point_id: int, nonce: str) -> str:
     raw = f"{point_id}:{nonce}".encode("utf-8")
     return hmac.new(_PATROL_QR_SECRET.encode("utf-8"), raw, hashlib.sha256).hexdigest()[:20]
@@ -65,6 +73,8 @@ async def _get_device_by_token(db: AsyncSession, token: str) -> models.PatrolDev
     device = await db.scalar(select(models.PatrolDevice).where(models.PatrolDevice.device_token == token))
     if not device:
         raise HTTPException(status_code=401, detail="設備憑證無效，請重新綁定")
+    if not device.is_active:
+        raise HTTPException(status_code=401, detail="此設備已解除綁定，請重新綁定")
     return device
 
 
@@ -157,23 +167,36 @@ async def bind_device(
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.utcnow()
+    fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
+    existing_active = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_fingerprint == fingerprint_json,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
     bind = await db.scalar(select(models.PatrolBindingCode).where(models.PatrolBindingCode.code == body.code.strip()))
     if not bind:
         raise HTTPException(status_code=404, detail="綁定碼不存在")
     if bind.used_at is not None:
+        if existing_active:
+            raise HTTPException(status_code=400, detail="此裝置已綁定，請用「已綁定開始巡邏」登入")
         raise HTTPException(status_code=400, detail="綁定碼已使用，請重新產生")
     if bind.expires_at < now:
         raise HTTPException(status_code=400, detail="綁定碼已過期，請重新產生")
+    if existing_active:
+        raise HTTPException(status_code=409, detail="此裝置已綁定，請先解除綁定或直接登入")
 
     fingerprint = body.device_fingerprint.model_dump()
     client_ip = _client_ip(request)
-    fingerprint["ip"] = client_ip
+    fingerprint.pop("ip", None)
     device = models.PatrolDevice(
         binding_code_id=bind.id,
         device_token=secrets.token_urlsafe(48),
         employee_name=body.employee_name.strip(),
         site_name=body.site_name.strip(),
-        device_fingerprint=json.dumps(fingerprint, ensure_ascii=False),
+        device_fingerprint=fingerprint_json,
         user_agent=fingerprint.get("userAgent"),
         platform=fingerprint.get("platform"),
         browser=fingerprint.get("browser"),
@@ -181,7 +204,10 @@ async def bind_device(
         screen_size=fingerprint.get("screen"),
         timezone=fingerprint.get("timezone"),
         ip_address=client_ip,
+        password_hash=_pwd_context.hash(body.password.strip()),
+        is_active=True,
         bound_at=now,
+        unbound_at=None,
     )
     bind.used_at = now
     db.add(device)
@@ -202,7 +228,106 @@ async def get_bound_device(
 ):
     token = _extract_device_token(authorization, x_device_token)
     device = await _get_device_by_token(db, token)
-    return schemas.PatrolDeviceRead.model_validate(device)
+    return schemas.PatrolDeviceRead(
+        id=device.id,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
+        is_active=device.is_active,
+        password_set=bool(device.password_hash),
+        bound_at=device.bound_at,
+        unbound_at=device.unbound_at,
+        device_fingerprint=device.device_fingerprint,
+    )
+
+
+@router.get("/binding-status", response_model=schemas.PatrolBindingStatusResponse, summary="查詢目前裝置是否已綁定")
+async def get_binding_status(
+    device_fingerprint: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    if not device_fingerprint:
+        return schemas.PatrolBindingStatusResponse(is_bound=False)
+    try:
+        raw = json.loads(device_fingerprint)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="device_fingerprint 格式錯誤") from exc
+    fingerprint_json = _normalize_device_fingerprint(raw)
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_fingerprint == fingerprint_json,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        return schemas.PatrolBindingStatusResponse(is_bound=False)
+    return schemas.PatrolBindingStatusResponse(
+        is_bound=True,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
+        ua=device.user_agent,
+        platform=device.platform,
+        browser=device.browser,
+        language=device.language,
+        screen=device.screen_size,
+        timezone=device.timezone,
+        password_set=bool(device.password_hash),
+        bound_at=device.bound_at,
+    )
+
+
+@router.post("/bound-login", response_model=schemas.PatrolBoundLoginResponse, summary="已綁定裝置登入巡邏")
+async def bound_login(
+    body: schemas.PatrolBoundLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.employee_name == body.employee_name.strip(),
+            models.PatrolDevice.device_fingerprint == fingerprint_json,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="此裝置尚未綁定，請先完成綁定")
+    if not device.password_hash or not _pwd_context.verify(body.password.strip(), device.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤")
+    return schemas.PatrolBoundLoginResponse(
+        device_token=device.device_token,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
+        bound_at=device.bound_at,
+    )
+
+
+@router.post("/unbind", response_model=schemas.PatrolUnbindResponse, summary="解除裝置綁定")
+async def unbind_device(
+    body: schemas.PatrolUnbindRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.employee_name == body.employee_name.strip(),
+            models.PatrolDevice.device_fingerprint == fingerprint_json,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="找不到有效綁定紀錄")
+    if not device.password_hash or not _pwd_context.verify(body.password.strip(), device.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤，無法解除綁定")
+    now = datetime.utcnow()
+    device.is_active = False
+    device.unbound_at = now
+    await db.flush()
+    return schemas.PatrolUnbindResponse(success=True, message="解除綁定成功", unbound_at=now)
 
 
 @router.get("/points", response_model=list[schemas.PatrolPointRead], summary="巡邏點列表")

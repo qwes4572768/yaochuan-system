@@ -56,6 +56,11 @@ SQLITE_ADD_COLUMNS: dict[str, List[Tuple[str, str]]] = {
     "patrol_logs": [
         ("employee_id", "INTEGER"),
     ],
+    "patrol_devices": [
+        ("password_hash", "TEXT"),
+        ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+        ("unbound_at", "DATETIME"),
+    ],
 }
 
 SITES_ADD_COLUMNS: List[Tuple[str, str, Optional[str]]] = [

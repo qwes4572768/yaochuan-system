@@ -454,7 +454,10 @@ class PatrolDevice(Base):
     screen_size: Mapped[Optional[str]] = mapped_column(String(40), comment="螢幕尺寸")
     timezone: Mapped[Optional[str]] = mapped_column(String(80), comment="時區")
     ip_address: Mapped[Optional[str]] = mapped_column(String(100), comment="來源 IP")
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), comment="綁定密碼雜湊值")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="是否仍為有效綁定")
     bound_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    unbound_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="解除綁定時間")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     logs: Mapped[List["PatrolLog"]] = relationship("PatrolLog", back_populates="device", cascade="all, delete-orphan")

@@ -884,6 +884,7 @@ class PatrolBindingCodeRead(BaseModel):
 class PatrolBindRequest(BaseModel):
     code: str
     employee_name: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
     site_name: str = Field(..., min_length=1, max_length=120)
     device_fingerprint: DeviceFingerprintPayload
 
@@ -899,9 +900,51 @@ class PatrolDeviceRead(BaseModel):
     id: int
     employee_name: str
     site_name: str
+    is_active: bool
+    password_set: bool = True
     bound_at: datetime
+    unbound_at: Optional[datetime] = None
     device_fingerprint: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class PatrolBoundLoginRequest(BaseModel):
+    employee_name: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+    device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolBoundLoginResponse(BaseModel):
+    device_token: str
+    employee_name: str
+    site_name: str
+    bound_at: datetime
+
+
+class PatrolUnbindRequest(BaseModel):
+    employee_name: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+    device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolUnbindResponse(BaseModel):
+    success: bool
+    message: str
+    unbound_at: datetime
+
+
+class PatrolBindingStatusResponse(BaseModel):
+    is_bound: bool
+    employee_name: Optional[str] = None
+    site_name: Optional[str] = None
+    ua: Optional[str] = None
+    platform: Optional[str] = None
+    browser: Optional[str] = None
+    language: Optional[str] = None
+    screen: Optional[str] = None
+    timezone: Optional[str] = None
+    password_set: bool = False
+    bound_at: Optional[datetime] = None
 
 
 class PatrolPointBase(BaseModel):

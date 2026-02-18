@@ -294,6 +294,7 @@ export interface PatrolBindingCode {
 export interface PatrolBindRequest {
   code: string
   employee_name: string
+  password: string
   site_name: string
   device_fingerprint: DeviceFingerprint
 }
@@ -309,8 +310,50 @@ export interface PatrolDeviceInfo {
   id: number
   employee_name: string
   site_name: string
+  is_active: boolean
+  password_set: boolean
   bound_at: string
+  unbound_at?: string | null
   device_fingerprint?: string
+}
+
+export interface PatrolBindingStatus {
+  is_bound: boolean
+  employee_name?: string
+  site_name?: string
+  ua?: string
+  platform?: string
+  browser?: string
+  language?: string
+  screen?: string
+  timezone?: string
+  password_set: boolean
+  bound_at?: string
+}
+
+export interface PatrolBoundLoginRequest {
+  employee_name: string
+  password: string
+  device_fingerprint: DeviceFingerprint
+}
+
+export interface PatrolBoundLoginResponse {
+  device_token: string
+  employee_name: string
+  site_name: string
+  bound_at: string
+}
+
+export interface PatrolUnbindRequest {
+  employee_name: string
+  password: string
+  device_fingerprint: DeviceFingerprint
+}
+
+export interface PatrolUnbindResponse {
+  success: boolean
+  message: string
+  unbound_at: string
 }
 
 export interface PatrolPoint {

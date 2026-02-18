@@ -499,6 +499,20 @@ export const patrolApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  bindingStatus: (deviceFingerprint: import('./types').DeviceFingerprint) =>
+    request<import('./types').PatrolBindingStatus>(
+      `/patrol/binding-status?device_fingerprint=${encodeURIComponent(JSON.stringify(deviceFingerprint))}`
+    ),
+  boundLogin: (data: import('./types').PatrolBoundLoginRequest) =>
+    request<import('./types').PatrolBoundLoginResponse>('/patrol/bound-login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unbind: (data: import('./types').PatrolUnbindRequest) =>
+    request<import('./types').PatrolUnbindResponse>('/patrol/unbind', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   meDevice: async () => {
     const token = getPatrolDeviceToken()
     const headers: Record<string, string> = {}
