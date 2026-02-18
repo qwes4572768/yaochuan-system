@@ -473,6 +473,8 @@ class PatrolDeviceBinding(Base):
     employee_name: Mapped[Optional[str]] = mapped_column(String(80), index=True, comment="員工姓名")
     site_name: Mapped[Optional[str]] = mapped_column(String(120), index=True, comment="案場名稱")
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), comment="綁定密碼雜湊值")
+    device_fingerprint_json: Mapped[Optional[str]] = mapped_column(Text, comment="設備指紋 JSON（排序後字串）")
+    is_bound: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="是否已完成綁定")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="是否仍為有效綁定")
     bound_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True, comment="綁定時間")
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True, comment="最後登入/使用時間")

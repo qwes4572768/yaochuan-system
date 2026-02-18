@@ -891,6 +891,8 @@ class PatrolBindRequest(BaseModel):
 
 
 class PatrolBindResponse(BaseModel):
+    device_public_id: Optional[str] = None
+    is_bound: bool = True
     device_token: str
     employee_name: str
     site_name: str

@@ -148,7 +148,7 @@ def _point_to_read(point: models.PatrolPoint) -> schemas.PatrolPointRead:
 def _binding_to_status(binding: models.PatrolDeviceBinding, device_public_id: str) -> schemas.PatrolDeviceStatusResponse:
     return schemas.PatrolDeviceStatusResponse(
         device_public_id=device_public_id,
-        is_bound=bool(binding.is_active),
+        is_bound=bool(binding.is_bound),
         employee_name=binding.employee_name,
         site_name=binding.site_name,
         ua=binding.user_agent,
@@ -331,6 +331,8 @@ async def bind_device(
     db.add(device)
     await db.flush()
     return schemas.PatrolBindResponse(
+        device_public_id=device.device_public_id,
+        is_bound=True,
         device_token=device.device_token,
         employee_name=device.employee_name,
         site_name=device.site_name,
@@ -405,8 +407,18 @@ async def get_binding_status(
 
 
 @router.post("/device/permanent-qr", response_model=schemas.PatrolPermanentQrResponse, summary="產生永久綁定 QR")
-async def create_permanent_bind_qr():
-    device_public_id = str(uuid.uuid4())
+async def create_permanent_bind_qr(
+    db: AsyncSession = Depends(get_db),
+):
+    device_public_id = str(uuid.uuid4()).strip()
+    row = models.PatrolDeviceBinding(
+        device_public_id=device_public_id,
+        is_bound=False,
+        is_active=False,
+        bound_at=None,
+    )
+    db.add(row)
+    await db.flush()
     qr_url = _build_permanent_bind_url(device_public_id)
     return schemas.PatrolPermanentQrResponse(
         device_public_id=device_public_id,
@@ -425,39 +437,7 @@ async def get_device_status(
         select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
     if not binding:
-        legacy = await db.scalar(
-            select(models.PatrolDevice)
-            .where(
-                models.PatrolDevice.device_public_id == normalized_public_id,
-                models.PatrolDevice.is_active.is_(True),
-            )
-            .order_by(models.PatrolDevice.id.desc())
-        )
-        if legacy:
-            return schemas.PatrolDeviceStatusResponse(
-                device_public_id=normalized_public_id,
-                is_bound=True,
-                employee_name=legacy.employee_name,
-                site_name=legacy.site_name,
-                ua=legacy.user_agent,
-                platform=legacy.platform,
-                browser=legacy.browser,
-                language=legacy.language,
-                screen=legacy.screen_size,
-                timezone=legacy.timezone,
-                password_set=bool(legacy.password_hash),
-                bound_at=legacy.bound_at,
-                device_info={
-                    "ua": legacy.user_agent,
-                    "platform": legacy.platform,
-                    "browser": legacy.browser,
-                    "lang": legacy.language,
-                    "screen": legacy.screen_size,
-                    "tz": legacy.timezone,
-                },
-            )
-    if not binding:
-        return schemas.PatrolDeviceStatusResponse(device_public_id=normalized_public_id, is_bound=False, password_set=False)
+        raise HTTPException(status_code=404, detail="device not found")
     return _binding_to_status(binding, normalized_public_id)
 
 
@@ -480,25 +460,15 @@ async def bind_device_by_public_id(
         select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
     if not binding:
-        legacy = await db.scalar(
-            select(models.PatrolDevice)
-            .where(
-                models.PatrolDevice.device_public_id == normalized_public_id,
-                models.PatrolDevice.is_active.is_(True),
-            )
-            .order_by(models.PatrolDevice.id.desc())
-        )
-        if legacy:
-            raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
-    if binding and binding.is_active:
-        raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
-    if not binding:
-        binding = models.PatrolDeviceBinding(device_public_id=normalized_public_id)
-        db.add(binding)
+        raise HTTPException(status_code=404, detail="device not found")
+    if binding.is_bound:
+        raise HTTPException(status_code=400, detail="device already bound")
 
     binding.employee_name = body.employee_name.strip()
     binding.site_name = body.site_name.strip()
     binding.password_hash = password_hash
+    binding.device_fingerprint_json = fingerprint_json
+    binding.is_bound = True
     binding.is_active = True
     binding.bound_at = now
     binding.last_seen_at = now
@@ -528,6 +498,8 @@ async def bind_device_by_public_id(
         client_ip=client_ip,
     )
     return schemas.PatrolBindResponse(
+        device_public_id=normalized_public_id,
+        is_bound=True,
         device_token=device.device_token,
         employee_name=device.employee_name,
         site_name=device.site_name,
@@ -575,42 +547,7 @@ async def login_by_device_public_id(
     binding = await db.scalar(
         select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
-    if not binding:
-        legacy = await db.scalar(
-            select(models.PatrolDevice)
-            .where(
-                models.PatrolDevice.device_public_id == normalized_public_id,
-                models.PatrolDevice.is_active.is_(True),
-            )
-            .order_by(models.PatrolDevice.id.desc())
-        )
-        if legacy:
-            binding = models.PatrolDeviceBinding(
-                device_public_id=normalized_public_id,
-                employee_name=legacy.employee_name,
-                site_name=legacy.site_name,
-                password_hash=legacy.password_hash,
-                is_active=legacy.is_active,
-                bound_at=legacy.bound_at,
-                last_seen_at=legacy.bound_at,
-                user_agent=legacy.user_agent,
-                platform=legacy.platform,
-                browser=legacy.browser,
-                language=legacy.language,
-                screen_size=legacy.screen_size,
-                timezone=legacy.timezone,
-                device_info={
-                    "ua": legacy.user_agent,
-                    "platform": legacy.platform,
-                    "browser": legacy.browser,
-                    "lang": legacy.language,
-                    "screen": legacy.screen_size,
-                    "tz": legacy.timezone,
-                },
-            )
-            db.add(binding)
-            await db.flush()
-    if not binding or not binding.is_active:
+    if not binding or not binding.is_bound:
         raise HTTPException(status_code=404, detail="此永久裝置尚未綁定，請先綁定")
     if not binding.password_hash or not _pwd_context.verify(body.password.strip(), binding.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
@@ -683,7 +620,9 @@ async def update_device_password_by_public_id(
     binding = await db.scalar(
         select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
-    if not binding or not binding.is_active:
+    if not binding:
+        raise HTTPException(status_code=404, detail="device not found")
+    if not binding.is_bound:
         raise HTTPException(status_code=404, detail="此永久裝置尚未綁定，請先綁定")
     if not binding.password_hash or not _pwd_context.verify(body.current_password.strip(), binding.password_hash):
         raise HTTPException(status_code=401, detail="目前密碼錯誤")
@@ -721,47 +660,15 @@ async def unbind_by_device_public_id(
         select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
     if not binding:
-        legacy = await db.scalar(
-            select(models.PatrolDevice)
-            .where(
-                models.PatrolDevice.device_public_id == normalized_public_id,
-                models.PatrolDevice.is_active.is_(True),
-            )
-            .order_by(models.PatrolDevice.id.desc())
-        )
-        if legacy:
-            binding = models.PatrolDeviceBinding(
-                device_public_id=normalized_public_id,
-                employee_name=legacy.employee_name,
-                site_name=legacy.site_name,
-                password_hash=legacy.password_hash,
-                is_active=legacy.is_active,
-                bound_at=legacy.bound_at,
-                last_seen_at=legacy.bound_at,
-                user_agent=legacy.user_agent,
-                platform=legacy.platform,
-                browser=legacy.browser,
-                language=legacy.language,
-                screen_size=legacy.screen_size,
-                timezone=legacy.timezone,
-                device_info={
-                    "ua": legacy.user_agent,
-                    "platform": legacy.platform,
-                    "browser": legacy.browser,
-                    "lang": legacy.language,
-                    "screen": legacy.screen_size,
-                    "tz": legacy.timezone,
-                },
-            )
-            db.add(binding)
-            await db.flush()
-    if not binding or not binding.is_active:
+        raise HTTPException(status_code=404, detail="device not found")
+    if not binding.is_bound:
         raise HTTPException(status_code=404, detail="找不到有效綁定紀錄")
     if not binding.password_hash or not _pwd_context.verify(body.password.strip(), binding.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤，無法解除綁定")
     if body.employee_name and binding.employee_name and body.employee_name.strip() != binding.employee_name:
         raise HTTPException(status_code=401, detail="員工姓名與綁定資料不符")
     now = datetime.utcnow()
+    binding.is_bound = False
     binding.is_active = False
     await db.execute(
         models.PatrolDevice.__table__.update()
@@ -882,6 +789,7 @@ async def admin_unbind_device_binding(
     if not binding.is_active:
         return schemas.PatrolUnbindResponse(success=True, message="裝置已是解除狀態", unbound_at=datetime.utcnow())
     now = datetime.utcnow()
+    binding.is_bound = False
     binding.is_active = False
     await db.execute(
         models.PatrolDevice.__table__.update()
