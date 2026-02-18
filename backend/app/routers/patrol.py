@@ -315,12 +315,17 @@ async def bind_device(
     fingerprint = body.device_fingerprint.model_dump()
     client_ip = _client_ip(request)
     fingerprint.pop("ip", None)
+    device_public_id = (body.device_public_id or "").strip() or str(uuid.uuid4())
+    password_hash = _pwd_context.hash(body.password.strip())
+    employee_name = body.employee_name.strip()
+    site_name = body.site_name.strip()
+
     device = models.PatrolDevice(
         binding_code_id=bind.id,
-        device_public_id=(body.device_public_id or "").strip() or None,
+        device_public_id=device_public_id,
         device_token=secrets.token_urlsafe(48),
-        employee_name=body.employee_name.strip(),
-        site_name=body.site_name.strip(),
+        employee_name=employee_name,
+        site_name=site_name,
         device_fingerprint=fingerprint_json,
         user_agent=fingerprint.get("userAgent"),
         platform=fingerprint.get("platform"),
@@ -329,7 +334,7 @@ async def bind_device(
         screen_size=fingerprint.get("screen"),
         timezone=fingerprint.get("timezone"),
         ip_address=client_ip,
-        password_hash=_pwd_context.hash(body.password.strip()),
+        password_hash=password_hash,
         is_active=True,
         bound_at=now,
         unbound_at=None,
@@ -337,8 +342,67 @@ async def bind_device(
     bind.used_at = now
     db.add(device)
     await db.flush()
+
+    # 同步寫入 patrol_device_bindings，讓管理頁 GET /device-bindings 與綁定頁看到同一份資料
+    existing_binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(
+            models.PatrolDeviceBinding.device_public_id == device_public_id
+        )
+    )
+    if existing_binding:
+        existing_binding.employee_name = employee_name
+        existing_binding.site_name = site_name
+        existing_binding.password_hash = password_hash
+        existing_binding.device_fingerprint_json = fingerprint_json
+        existing_binding.is_bound = True
+        existing_binding.is_active = True
+        existing_binding.bound_at = now
+        existing_binding.last_seen_at = now
+        existing_binding.user_agent = fingerprint.get("userAgent")
+        existing_binding.platform = fingerprint.get("platform")
+        existing_binding.browser = fingerprint.get("browser")
+        existing_binding.language = fingerprint.get("language")
+        existing_binding.screen_size = fingerprint.get("screen")
+        existing_binding.timezone = fingerprint.get("timezone")
+        existing_binding.device_info = {
+            "ua": existing_binding.user_agent,
+            "platform": existing_binding.platform,
+            "browser": existing_binding.browser,
+            "lang": existing_binding.language,
+            "screen": existing_binding.screen_size,
+            "tz": existing_binding.timezone,
+        }
+    else:
+        binding_row = models.PatrolDeviceBinding(
+            device_public_id=device_public_id,
+            employee_name=employee_name,
+            site_name=site_name,
+            password_hash=password_hash,
+            device_fingerprint_json=fingerprint_json,
+            is_bound=True,
+            is_active=True,
+            bound_at=now,
+            last_seen_at=now,
+            user_agent=fingerprint.get("userAgent"),
+            platform=fingerprint.get("platform"),
+            browser=fingerprint.get("browser"),
+            language=fingerprint.get("language"),
+            screen_size=fingerprint.get("screen"),
+            timezone=fingerprint.get("timezone"),
+            device_info={
+                "ua": fingerprint.get("userAgent"),
+                "platform": fingerprint.get("platform"),
+                "browser": fingerprint.get("browser"),
+                "lang": fingerprint.get("language"),
+                "screen": fingerprint.get("screen"),
+                "tz": fingerprint.get("timezone"),
+            },
+        )
+        db.add(binding_row)
+    await db.flush()
+
     return schemas.PatrolBindResponse(
-        device_public_id=device.device_public_id,
+        device_public_id=device_public_id,
         is_bound=True,
         device_token=device.device_token,
         employee_name=device.employee_name,
