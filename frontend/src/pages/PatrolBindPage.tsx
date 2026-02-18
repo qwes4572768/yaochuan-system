@@ -29,6 +29,7 @@ function buildFingerprint(): DeviceFingerprint {
 export default function PatrolBindPage() {
   const [params] = useSearchParams()
   const code = params.get('code') || ''
+  const devicePublicId = params.get('device_public_id') || ''
   const [employeeName, setEmployeeName] = useState('')
   const [siteName, setSiteName] = useState('')
   const [password, setPassword] = useState('')
@@ -73,6 +74,7 @@ export default function PatrolBindPage() {
     try {
       const res = await patrolApi.bind({
         code,
+        device_public_id: devicePublicId || undefined,
         employee_name: employeeName.trim(),
         password: password.trim(),
         site_name: siteName.trim(),

@@ -291,6 +291,13 @@ export interface PatrolBindingCode {
   qr_value: string
 }
 
+export interface PatrolPermanentQr {
+  device_public_id: string
+  qr_url: string
+  qr_value: string
+  status: 'permanent'
+}
+
 export interface PatrolBindRequest {
   code: string
   employee_name: string
@@ -342,6 +349,34 @@ export interface PatrolBoundLoginResponse {
   employee_name: string
   site_name: string
   bound_at: string
+}
+
+export interface PatrolDeviceStatus {
+  device_public_id: string
+  is_bound: boolean
+  employee_name?: string
+  site_name?: string
+  ua?: string
+  platform?: string
+  browser?: string
+  language?: string
+  screen?: string
+  timezone?: string
+  password_set: boolean
+  bound_at?: string
+}
+
+export interface PatrolDeviceBindRequest {
+  employee_name: string
+  password: string
+  site_name: string
+  device_fingerprint: DeviceFingerprint
+}
+
+export interface PatrolDeviceStartRequest {
+  employee_name: string
+  password: string
+  device_fingerprint: DeviceFingerprint
 }
 
 export interface PatrolUnbindRequest {

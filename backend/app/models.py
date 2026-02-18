@@ -443,6 +443,7 @@ class PatrolDevice(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     binding_code_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_binding_codes.id", ondelete="SET NULL"), nullable=True, index=True)
+    device_public_id: Mapped[Optional[str]] = mapped_column(String(36), index=True, comment="裝置永久識別碼 UUID")
     device_token: Mapped[str] = mapped_column(String(140), unique=True, index=True, comment="伺服器簽發設備 token")
     employee_name: Mapped[str] = mapped_column(String(80), index=True, comment="員工姓名")
     site_name: Mapped[str] = mapped_column(String(120), index=True, comment="案場名稱")

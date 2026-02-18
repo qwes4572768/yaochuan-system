@@ -16,6 +16,7 @@ import SiteDetail from './pages/SiteDetail'
 import SiteHistory from './pages/SiteHistory'
 import SecurityPayroll from './pages/SecurityPayroll'
 import PatrolBindPage from './pages/PatrolBindPage'
+import PatrolBindPermanentPage from './pages/PatrolBindPermanentPage'
 import PatrolPage from './pages/PatrolPage'
 import PatrolPublicCheckinPage from './pages/PatrolPublicCheckinPage'
 import PatrolBindingAdminPage from './pages/PatrolBindingAdminPage'
@@ -181,6 +182,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/patrol/bind" element={<PatrolBindPage />} />
+          <Route path="/patrol/bind/permanent/:devicePublicId" element={<PatrolBindPermanentPage />} />
           <Route path="/patrol/checkin/:publicId" element={<PatrolPublicCheckinRoute />} />
           <Route path="/patrol" element={<PatrolPage />} />
           <Route path="*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />

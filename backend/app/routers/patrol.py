@@ -45,6 +45,11 @@ def _build_point_checkin_url(public_id: str) -> str:
     return f"{base}/patrol/checkin/{quote(public_id)}"
 
 
+def _build_permanent_bind_url(device_public_id: str) -> str:
+    base = settings.public_base_url.rstrip("/")
+    return f"{base}/patrol/bind/permanent/{quote(device_public_id)}"
+
+
 def _extract_device_token(
     authorization: str | None,
     x_device_token: str | None,
@@ -193,6 +198,7 @@ async def bind_device(
     fingerprint.pop("ip", None)
     device = models.PatrolDevice(
         binding_code_id=bind.id,
+        device_public_id=(body.device_public_id or "").strip() or None,
         device_token=secrets.token_urlsafe(48),
         employee_name=body.employee_name.strip(),
         site_name=body.site_name.strip(),
@@ -264,6 +270,7 @@ async def get_binding_status(
         return schemas.PatrolBindingStatusResponse(is_bound=False)
     return schemas.PatrolBindingStatusResponse(
         is_bound=True,
+        device_public_id=device.device_public_id,
         employee_name=device.employee_name,
         site_name=device.site_name,
         ua=device.user_agent,
@@ -273,6 +280,101 @@ async def get_binding_status(
         screen=device.screen_size,
         timezone=device.timezone,
         password_set=bool(device.password_hash),
+        bound_at=device.bound_at,
+    )
+
+
+@router.post("/device/permanent-qr", response_model=schemas.PatrolPermanentQrResponse, summary="產生永久綁定 QR")
+async def create_permanent_bind_qr():
+    device_public_id = str(uuid.uuid4())
+    qr_url = _build_permanent_bind_url(device_public_id)
+    return schemas.PatrolPermanentQrResponse(
+        device_public_id=device_public_id,
+        qr_url=qr_url,
+        qr_value=qr_url,
+    )
+
+
+@router.get("/device/{device_public_id}", response_model=schemas.PatrolDeviceStatusResponse, summary="查詢永久裝置綁定狀態")
+async def get_device_status(
+    device_public_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_public_id == device_public_id.strip(),
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        return schemas.PatrolDeviceStatusResponse(device_public_id=device_public_id, is_bound=False, password_set=False)
+    return schemas.PatrolDeviceStatusResponse(
+        device_public_id=device_public_id,
+        is_bound=True,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
+        ua=device.user_agent,
+        platform=device.platform,
+        browser=device.browser,
+        language=device.language,
+        screen=device.screen_size,
+        timezone=device.timezone,
+        password_set=bool(device.password_hash),
+        bound_at=device.bound_at,
+    )
+
+
+@router.post("/device/{device_public_id}/bind", response_model=schemas.PatrolBindResponse, summary="永久裝置綁定")
+async def bind_device_by_public_id(
+    device_public_id: str,
+    body: schemas.PatrolDeviceBindRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    now = datetime.utcnow()
+    normalized_public_id = device_public_id.strip()
+    fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
+    exists = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_public_id == normalized_public_id,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if exists:
+        raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
+
+    fingerprint = body.device_fingerprint.model_dump()
+    fingerprint.pop("ip", None)
+    client_ip = _client_ip(request)
+    device = models.PatrolDevice(
+        binding_code_id=None,
+        device_public_id=normalized_public_id,
+        device_token=secrets.token_urlsafe(48),
+        employee_name=body.employee_name.strip(),
+        site_name=body.site_name.strip(),
+        device_fingerprint=fingerprint_json,
+        user_agent=fingerprint.get("userAgent"),
+        platform=fingerprint.get("platform"),
+        browser=fingerprint.get("browser"),
+        language=fingerprint.get("language"),
+        screen_size=fingerprint.get("screen"),
+        timezone=fingerprint.get("timezone"),
+        ip_address=client_ip,
+        password_hash=_pwd_context.hash(body.password.strip()),
+        is_active=True,
+        bound_at=now,
+        unbound_at=None,
+    )
+    db.add(device)
+    await db.flush()
+    return schemas.PatrolBindResponse(
+        device_token=device.device_token,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
         bound_at=device.bound_at,
     )
 
@@ -294,6 +396,36 @@ async def bound_login(
     )
     if not device:
         raise HTTPException(status_code=404, detail="此裝置尚未綁定，請先完成綁定")
+    if not device.password_hash or not _pwd_context.verify(body.password.strip(), device.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤")
+    return schemas.PatrolBoundLoginResponse(
+        device_token=device.device_token,
+        employee_name=device.employee_name,
+        site_name=device.site_name,
+        bound_at=device.bound_at,
+    )
+
+
+@router.post("/device/{device_public_id}/start", response_model=schemas.PatrolBoundLoginResponse, summary="永久裝置開始巡邏")
+async def start_by_device_public_id(
+    device_public_id: str,
+    body: schemas.PatrolDeviceStartRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_public_id == device_public_id.strip(),
+            models.PatrolDevice.employee_name == body.employee_name.strip(),
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        raise HTTPException(status_code=404, detail="此永久裝置尚未綁定，請先綁定")
+    if (device.device_fingerprint or "") != fingerprint_json:
+        raise HTTPException(status_code=401, detail="此裝置與綁定設備不符")
     if not device.password_hash or not _pwd_context.verify(body.password.strip(), device.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
     return schemas.PatrolBoundLoginResponse(

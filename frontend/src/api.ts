@@ -494,8 +494,25 @@ export const patrolApi = {
       method: 'POST',
       body: JSON.stringify({ expire_minutes: expireMinutes }),
     }),
+  createPermanentQr: () =>
+    request<import('./types').PatrolPermanentQr>('/patrol/device/permanent-qr', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
   bind: (data: import('./types').PatrolBindRequest) =>
     request<import('./types').PatrolBindResponse>('/patrol/bind', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getDeviceStatus: (devicePublicId: string) =>
+    request<import('./types').PatrolDeviceStatus>(`/patrol/device/${encodeURIComponent(devicePublicId)}`),
+  bindByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceBindRequest) =>
+    request<import('./types').PatrolBindResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/bind`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  startByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceStartRequest) =>
+    request<import('./types').PatrolBoundLoginResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/start`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),

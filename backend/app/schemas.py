@@ -883,6 +883,7 @@ class PatrolBindingCodeRead(BaseModel):
 
 class PatrolBindRequest(BaseModel):
     code: str
+    device_public_id: Optional[str] = Field(None, min_length=36, max_length=36)
     employee_name: str = Field(..., min_length=1, max_length=80)
     password: str = Field(..., min_length=1, max_length=128)
     site_name: str = Field(..., min_length=1, max_length=120)
@@ -935,6 +936,7 @@ class PatrolUnbindResponse(BaseModel):
 
 class PatrolBindingStatusResponse(BaseModel):
     is_bound: bool
+    device_public_id: Optional[str] = None
     employee_name: Optional[str] = None
     site_name: Optional[str] = None
     ua: Optional[str] = None
@@ -945,6 +947,41 @@ class PatrolBindingStatusResponse(BaseModel):
     timezone: Optional[str] = None
     password_set: bool = False
     bound_at: Optional[datetime] = None
+
+
+class PatrolPermanentQrResponse(BaseModel):
+    device_public_id: str
+    qr_url: str
+    qr_value: str
+    status: str = "permanent"
+
+
+class PatrolDeviceStatusResponse(BaseModel):
+    device_public_id: str
+    is_bound: bool
+    employee_name: Optional[str] = None
+    site_name: Optional[str] = None
+    ua: Optional[str] = None
+    platform: Optional[str] = None
+    browser: Optional[str] = None
+    language: Optional[str] = None
+    screen: Optional[str] = None
+    timezone: Optional[str] = None
+    password_set: bool = False
+    bound_at: Optional[datetime] = None
+
+
+class PatrolDeviceBindRequest(BaseModel):
+    employee_name: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+    site_name: str = Field(..., min_length=1, max_length=120)
+    device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolDeviceStartRequest(BaseModel):
+    employee_name: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+    device_fingerprint: DeviceFingerprintPayload
 
 
 class PatrolPointBase(BaseModel):

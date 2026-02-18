@@ -57,6 +57,7 @@ SQLITE_ADD_COLUMNS: dict[str, List[Tuple[str, str]]] = {
         ("employee_id", "INTEGER"),
     ],
     "patrol_devices": [
+        ("device_public_id", "TEXT"),
         ("password_hash", "TEXT"),
         ("is_active", "INTEGER NOT NULL DEFAULT 1"),
         ("unbound_at", "DATETIME"),
@@ -118,6 +119,10 @@ def fix_sqlite_missing_columns(db_path: Path) -> bool:
                     )
                 cur.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_patrol_points_public_id ON patrol_points (public_id)"
+                )
+            if table == "patrol_devices":
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_patrol_devices_device_public_id ON patrol_devices (device_public_id)"
                 )
         conn.commit()
         return True
