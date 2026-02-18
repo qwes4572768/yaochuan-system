@@ -3,7 +3,7 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Optional, List
-from sqlalchemy import String, Date, Time, Text, Numeric, ForeignKey, DateTime, Boolean, Integer, UniqueConstraint
+from sqlalchemy import String, Date, Time, Text, Numeric, ForeignKey, DateTime, Boolean, Integer, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -462,6 +462,29 @@ class PatrolDevice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     logs: Mapped[List["PatrolLog"]] = relationship("PatrolLog", back_populates="device", cascade="all, delete-orphan")
+
+
+class PatrolDeviceBinding(Base):
+    """永久裝置綁定主檔（商用入口）。"""
+    __tablename__ = "patrol_device_bindings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    device_public_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, comment="裝置永久識別碼 UUID")
+    employee_name: Mapped[Optional[str]] = mapped_column(String(80), index=True, comment="員工姓名")
+    site_name: Mapped[Optional[str]] = mapped_column(String(120), index=True, comment="案場名稱")
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), comment="綁定密碼雜湊值")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, comment="是否仍為有效綁定")
+    bound_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True, comment="綁定時間")
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True, comment="最後登入/使用時間")
+    device_info: Mapped[Optional[dict]] = mapped_column(JSON, comment="設備資訊 JSON（ua/platform/lang/screen/tz）")
+    user_agent: Mapped[Optional[str]] = mapped_column(String(600), comment="UA")
+    platform: Mapped[Optional[str]] = mapped_column(String(120), comment="平台")
+    browser: Mapped[Optional[str]] = mapped_column(String(120), comment="瀏覽器")
+    language: Mapped[Optional[str]] = mapped_column(String(30), comment="語言")
+    screen_size: Mapped[Optional[str]] = mapped_column(String(40), comment="螢幕尺寸")
+    timezone: Mapped[Optional[str]] = mapped_column(String(80), comment="時區")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class PatrolPoint(Base):

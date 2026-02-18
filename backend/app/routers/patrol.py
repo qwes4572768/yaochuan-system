@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from passlib.context import CryptContext
-from sqlalchemy import Select, and_, select
+from sqlalchemy import Select, and_, or_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -142,6 +142,118 @@ def _point_to_read(point: models.PatrolPoint) -> schemas.PatrolPointRead:
         qr_url=_build_point_checkin_url(point.public_id),
         created_at=point.created_at,
         updated_at=point.updated_at,
+    )
+
+
+def _binding_to_status(binding: models.PatrolDeviceBinding, device_public_id: str) -> schemas.PatrolDeviceStatusResponse:
+    return schemas.PatrolDeviceStatusResponse(
+        device_public_id=device_public_id,
+        is_bound=bool(binding.is_active),
+        employee_name=binding.employee_name,
+        site_name=binding.site_name,
+        ua=binding.user_agent,
+        platform=binding.platform,
+        browser=binding.browser,
+        language=binding.language,
+        screen=binding.screen_size,
+        timezone=binding.timezone,
+        password_set=bool(binding.password_hash),
+        bound_at=binding.bound_at,
+        device_info={
+            "ua": binding.user_agent,
+            "platform": binding.platform,
+            "browser": binding.browser,
+            "lang": binding.language,
+            "screen": binding.screen_size,
+            "tz": binding.timezone,
+        },
+    )
+
+
+async def _upsert_active_patrol_device(
+    db: AsyncSession,
+    *,
+    device_public_id: str,
+    employee_name: str,
+    site_name: str,
+    fingerprint: dict,
+    fingerprint_json: str,
+    password_hash: str,
+    client_ip: str | None,
+) -> models.PatrolDevice:
+    now = datetime.utcnow()
+    device = await db.scalar(
+        select(models.PatrolDevice)
+        .where(
+            models.PatrolDevice.device_public_id == device_public_id,
+            models.PatrolDevice.device_fingerprint == fingerprint_json,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .order_by(models.PatrolDevice.id.desc())
+    )
+    if not device:
+        device = models.PatrolDevice(
+            binding_code_id=None,
+            device_public_id=device_public_id,
+            device_token=secrets.token_urlsafe(48),
+            employee_name=employee_name,
+            site_name=site_name,
+            device_fingerprint=fingerprint_json,
+            user_agent=fingerprint.get("userAgent"),
+            platform=fingerprint.get("platform"),
+            browser=fingerprint.get("browser"),
+            language=fingerprint.get("language"),
+            screen_size=fingerprint.get("screen"),
+            timezone=fingerprint.get("timezone"),
+            ip_address=client_ip,
+            password_hash=password_hash,
+            is_active=True,
+            bound_at=now,
+            unbound_at=None,
+        )
+        db.add(device)
+        await db.flush()
+        return device
+
+    device.employee_name = employee_name
+    device.site_name = site_name
+    device.user_agent = fingerprint.get("userAgent")
+    device.platform = fingerprint.get("platform")
+    device.browser = fingerprint.get("browser")
+    device.language = fingerprint.get("language")
+    device.screen_size = fingerprint.get("screen")
+    device.timezone = fingerprint.get("timezone")
+    device.ip_address = client_ip
+    device.password_hash = password_hash
+    device.is_active = True
+    device.unbound_at = None
+    return device
+
+
+def _binding_to_admin_item(binding: models.PatrolDeviceBinding) -> schemas.PatrolDeviceBindingAdminItem:
+    return schemas.PatrolDeviceBindingAdminItem(
+        id=binding.id,
+        device_public_id=binding.device_public_id,
+        is_active=binding.is_active,
+        employee_name=binding.employee_name,
+        site_name=binding.site_name,
+        bound_at=binding.bound_at,
+        last_seen_at=binding.last_seen_at,
+        ua=binding.user_agent,
+        platform=binding.platform,
+        browser=binding.browser,
+        language=binding.language,
+        timezone=binding.timezone,
+        screen=binding.screen_size,
+        password_set=bool(binding.password_hash),
+        device_info={
+            "ua": binding.user_agent,
+            "platform": binding.platform,
+            "browser": binding.browser,
+            "lang": binding.language,
+            "screen": binding.screen_size,
+            "tz": binding.timezone,
+        },
     )
 
 
@@ -308,38 +420,45 @@ async def get_device_status(
     device_public_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    device = await db.scalar(
-        select(models.PatrolDevice)
-        .where(
-            models.PatrolDevice.device_public_id == device_public_id.strip(),
-            models.PatrolDevice.is_active.is_(True),
+    normalized_public_id = device_public_id.strip()
+    binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
+    )
+    if not binding:
+        legacy = await db.scalar(
+            select(models.PatrolDevice)
+            .where(
+                models.PatrolDevice.device_public_id == normalized_public_id,
+                models.PatrolDevice.is_active.is_(True),
+            )
+            .order_by(models.PatrolDevice.id.desc())
         )
-        .order_by(models.PatrolDevice.id.desc())
-    )
-    if not device:
-        return schemas.PatrolDeviceStatusResponse(device_public_id=device_public_id, is_bound=False, password_set=False)
-    return schemas.PatrolDeviceStatusResponse(
-        device_public_id=device_public_id,
-        is_bound=True,
-        employee_name=device.employee_name,
-        site_name=device.site_name,
-        ua=device.user_agent,
-        platform=device.platform,
-        browser=device.browser,
-        language=device.language,
-        screen=device.screen_size,
-        timezone=device.timezone,
-        password_set=bool(device.password_hash),
-        bound_at=device.bound_at,
-        device_info={
-            "ua": device.user_agent,
-            "platform": device.platform,
-            "browser": device.browser,
-            "lang": device.language,
-            "screen": device.screen_size,
-            "tz": device.timezone,
-        },
-    )
+        if legacy:
+            return schemas.PatrolDeviceStatusResponse(
+                device_public_id=normalized_public_id,
+                is_bound=True,
+                employee_name=legacy.employee_name,
+                site_name=legacy.site_name,
+                ua=legacy.user_agent,
+                platform=legacy.platform,
+                browser=legacy.browser,
+                language=legacy.language,
+                screen=legacy.screen_size,
+                timezone=legacy.timezone,
+                password_set=bool(legacy.password_hash),
+                bound_at=legacy.bound_at,
+                device_info={
+                    "ua": legacy.user_agent,
+                    "platform": legacy.platform,
+                    "browser": legacy.browser,
+                    "lang": legacy.language,
+                    "screen": legacy.screen_size,
+                    "tz": legacy.timezone,
+                },
+            )
+    if not binding:
+        return schemas.PatrolDeviceStatusResponse(device_public_id=normalized_public_id, is_bound=False, password_set=False)
+    return _binding_to_status(binding, normalized_public_id)
 
 
 @router.post("/device/{device_public_id}/bind", response_model=schemas.PatrolBindResponse, summary="永久裝置綁定")
@@ -352,41 +471,62 @@ async def bind_device_by_public_id(
     now = datetime.utcnow()
     normalized_public_id = device_public_id.strip()
     fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
-    exists = await db.scalar(
-        select(models.PatrolDevice)
-        .where(
-            models.PatrolDevice.device_public_id == normalized_public_id,
-            models.PatrolDevice.is_active.is_(True),
-        )
-        .order_by(models.PatrolDevice.id.desc())
-    )
-    if exists:
-        raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
-
     fingerprint = body.device_fingerprint.model_dump()
     fingerprint.pop("ip", None)
     client_ip = _client_ip(request)
-    device = models.PatrolDevice(
-        binding_code_id=None,
-        device_public_id=normalized_public_id,
-        device_token=secrets.token_urlsafe(48),
-        employee_name=body.employee_name.strip(),
-        site_name=body.site_name.strip(),
-        device_fingerprint=fingerprint_json,
-        user_agent=fingerprint.get("userAgent"),
-        platform=fingerprint.get("platform"),
-        browser=fingerprint.get("browser"),
-        language=fingerprint.get("language"),
-        screen_size=fingerprint.get("screen"),
-        timezone=fingerprint.get("timezone"),
-        ip_address=client_ip,
-        password_hash=_pwd_context.hash(body.password.strip()),
-        is_active=True,
-        bound_at=now,
-        unbound_at=None,
+    password_hash = _pwd_context.hash(body.password.strip())
+
+    binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
-    db.add(device)
-    await db.flush()
+    if not binding:
+        legacy = await db.scalar(
+            select(models.PatrolDevice)
+            .where(
+                models.PatrolDevice.device_public_id == normalized_public_id,
+                models.PatrolDevice.is_active.is_(True),
+            )
+            .order_by(models.PatrolDevice.id.desc())
+        )
+        if legacy:
+            raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
+    if binding and binding.is_active:
+        raise HTTPException(status_code=409, detail="此永久裝置已綁定，請用「已綁定開始巡邏」")
+    if not binding:
+        binding = models.PatrolDeviceBinding(device_public_id=normalized_public_id)
+        db.add(binding)
+
+    binding.employee_name = body.employee_name.strip()
+    binding.site_name = body.site_name.strip()
+    binding.password_hash = password_hash
+    binding.is_active = True
+    binding.bound_at = now
+    binding.last_seen_at = now
+    binding.user_agent = fingerprint.get("userAgent")
+    binding.platform = fingerprint.get("platform")
+    binding.browser = fingerprint.get("browser")
+    binding.language = fingerprint.get("language")
+    binding.screen_size = fingerprint.get("screen")
+    binding.timezone = fingerprint.get("timezone")
+    binding.device_info = {
+        "ua": binding.user_agent,
+        "platform": binding.platform,
+        "browser": binding.browser,
+        "lang": binding.language,
+        "screen": binding.screen_size,
+        "tz": binding.timezone,
+    }
+
+    device = await _upsert_active_patrol_device(
+        db,
+        device_public_id=normalized_public_id,
+        employee_name=binding.employee_name,
+        site_name=binding.site_name,
+        fingerprint=fingerprint,
+        fingerprint_json=fingerprint_json,
+        password_hash=password_hash,
+        client_ip=client_ip,
+    )
     return schemas.PatrolBindResponse(
         device_token=device.device_token,
         employee_name=device.employee_name,
@@ -422,34 +562,179 @@ async def bound_login(
     )
 
 
-@router.post("/device/{device_public_id}/start", response_model=schemas.PatrolBoundLoginResponse, summary="永久裝置開始巡邏")
-async def start_by_device_public_id(
+@router.post("/device/{device_public_id}/login", response_model=schemas.PatrolBoundLoginResponse, summary="永久裝置登入巡邏")
+async def login_by_device_public_id(
     device_public_id: str,
-    body: schemas.PatrolDeviceStartRequest,
+    body: schemas.PatrolDeviceLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    now = datetime.utcnow()
+    normalized_public_id = device_public_id.strip()
     fingerprint_json = _normalize_device_fingerprint(body.device_fingerprint.model_dump())
-    device = await db.scalar(
-        select(models.PatrolDevice)
-        .where(
-            models.PatrolDevice.device_public_id == device_public_id.strip(),
-            models.PatrolDevice.employee_name == body.employee_name.strip(),
-            models.PatrolDevice.is_active.is_(True),
-        )
-        .order_by(models.PatrolDevice.id.desc())
+    binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
     )
-    if not device:
+    if not binding:
+        legacy = await db.scalar(
+            select(models.PatrolDevice)
+            .where(
+                models.PatrolDevice.device_public_id == normalized_public_id,
+                models.PatrolDevice.is_active.is_(True),
+            )
+            .order_by(models.PatrolDevice.id.desc())
+        )
+        if legacy:
+            binding = models.PatrolDeviceBinding(
+                device_public_id=normalized_public_id,
+                employee_name=legacy.employee_name,
+                site_name=legacy.site_name,
+                password_hash=legacy.password_hash,
+                is_active=legacy.is_active,
+                bound_at=legacy.bound_at,
+                last_seen_at=legacy.bound_at,
+                user_agent=legacy.user_agent,
+                platform=legacy.platform,
+                browser=legacy.browser,
+                language=legacy.language,
+                screen_size=legacy.screen_size,
+                timezone=legacy.timezone,
+                device_info={
+                    "ua": legacy.user_agent,
+                    "platform": legacy.platform,
+                    "browser": legacy.browser,
+                    "lang": legacy.language,
+                    "screen": legacy.screen_size,
+                    "tz": legacy.timezone,
+                },
+            )
+            db.add(binding)
+            await db.flush()
+    if not binding or not binding.is_active:
         raise HTTPException(status_code=404, detail="此永久裝置尚未綁定，請先綁定")
-    if (device.device_fingerprint or "") != fingerprint_json:
-        raise HTTPException(status_code=401, detail="此裝置與綁定設備不符")
-    if not device.password_hash or not _pwd_context.verify(body.password.strip(), device.password_hash):
+    if not binding.password_hash or not _pwd_context.verify(body.password.strip(), binding.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
+    if body.employee_name and binding.employee_name and body.employee_name.strip() != binding.employee_name:
+        raise HTTPException(status_code=401, detail="員工姓名與綁定資料不符")
+
+    fingerprint = body.device_fingerprint.model_dump()
+    fingerprint.pop("ip", None)
+    client_ip = _client_ip(request)
+    device = await _upsert_active_patrol_device(
+        db,
+        device_public_id=normalized_public_id,
+        employee_name=binding.employee_name or "",
+        site_name=binding.site_name or "",
+        fingerprint=fingerprint,
+        fingerprint_json=fingerprint_json,
+        password_hash=binding.password_hash,
+        client_ip=client_ip,
+    )
+    binding.last_seen_at = now
+    binding.user_agent = fingerprint.get("userAgent")
+    binding.platform = fingerprint.get("platform")
+    binding.browser = fingerprint.get("browser")
+    binding.language = fingerprint.get("language")
+    binding.screen_size = fingerprint.get("screen")
+    binding.timezone = fingerprint.get("timezone")
+    binding.device_info = {
+        "ua": binding.user_agent,
+        "platform": binding.platform,
+        "browser": binding.browser,
+        "lang": binding.language,
+        "screen": binding.screen_size,
+        "tz": binding.timezone,
+    }
     return schemas.PatrolBoundLoginResponse(
         device_token=device.device_token,
         employee_name=device.employee_name,
         site_name=device.site_name,
         bound_at=device.bound_at,
     )
+
+
+@router.post("/device/{device_public_id}/start", response_model=schemas.PatrolBoundLoginResponse, summary="永久裝置開始巡邏（相容舊路由）")
+async def start_by_device_public_id(
+    device_public_id: str,
+    body: schemas.PatrolDeviceStartRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    login_payload = schemas.PatrolDeviceLoginRequest(
+        employee_name=body.employee_name,
+        password=body.password,
+        device_fingerprint=body.device_fingerprint,
+    )
+    return await login_by_device_public_id(
+        device_public_id=device_public_id,
+        body=login_payload,
+        request=request,
+        db=db,
+    )
+
+
+@router.post("/device/{device_public_id}/unbind", response_model=schemas.PatrolUnbindResponse, summary="永久裝置解除綁定")
+async def unbind_by_device_public_id(
+    device_public_id: str,
+    body: schemas.PatrolDeviceUnbindRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    normalized_public_id = device_public_id.strip()
+    binding = await db.scalar(
+        select(models.PatrolDeviceBinding).where(models.PatrolDeviceBinding.device_public_id == normalized_public_id)
+    )
+    if not binding:
+        legacy = await db.scalar(
+            select(models.PatrolDevice)
+            .where(
+                models.PatrolDevice.device_public_id == normalized_public_id,
+                models.PatrolDevice.is_active.is_(True),
+            )
+            .order_by(models.PatrolDevice.id.desc())
+        )
+        if legacy:
+            binding = models.PatrolDeviceBinding(
+                device_public_id=normalized_public_id,
+                employee_name=legacy.employee_name,
+                site_name=legacy.site_name,
+                password_hash=legacy.password_hash,
+                is_active=legacy.is_active,
+                bound_at=legacy.bound_at,
+                last_seen_at=legacy.bound_at,
+                user_agent=legacy.user_agent,
+                platform=legacy.platform,
+                browser=legacy.browser,
+                language=legacy.language,
+                screen_size=legacy.screen_size,
+                timezone=legacy.timezone,
+                device_info={
+                    "ua": legacy.user_agent,
+                    "platform": legacy.platform,
+                    "browser": legacy.browser,
+                    "lang": legacy.language,
+                    "screen": legacy.screen_size,
+                    "tz": legacy.timezone,
+                },
+            )
+            db.add(binding)
+            await db.flush()
+    if not binding or not binding.is_active:
+        raise HTTPException(status_code=404, detail="找不到有效綁定紀錄")
+    if not binding.password_hash or not _pwd_context.verify(body.password.strip(), binding.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤，無法解除綁定")
+    if body.employee_name and binding.employee_name and body.employee_name.strip() != binding.employee_name:
+        raise HTTPException(status_code=401, detail="員工姓名與綁定資料不符")
+    now = datetime.utcnow()
+    binding.is_active = False
+    await db.execute(
+        models.PatrolDevice.__table__.update()
+        .where(
+            models.PatrolDevice.device_public_id == normalized_public_id,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .values(is_active=False, unbound_at=now)
+    )
+    return schemas.PatrolUnbindResponse(success=True, message="解除綁定成功", unbound_at=now)
 
 
 @router.post("/unbind", response_model=schemas.PatrolUnbindResponse, summary="解除裝置綁定")
@@ -476,6 +761,101 @@ async def unbind_device(
     device.unbound_at = now
     await db.flush()
     return schemas.PatrolUnbindResponse(success=True, message="解除綁定成功", unbound_at=now)
+
+
+@router.get("/device-bindings", response_model=schemas.PatrolDeviceBindingAdminListResponse, summary="後台查詢裝置綁定列表")
+async def list_device_bindings(
+    query: str | None = Query(None),
+    employee_name: str | None = Query(None),
+    site_name: str | None = Query(None),
+    status: str | None = Query(None, description="active/inactive/all"),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt: Select[tuple[models.PatrolDeviceBinding]] = select(models.PatrolDeviceBinding)
+    count_stmt = select(func.count(models.PatrolDeviceBinding.id))
+
+    conds = []
+    if query and query.strip():
+        q = f"%{query.strip()}%"
+        conds.append(
+            or_(
+                models.PatrolDeviceBinding.device_public_id.ilike(q),
+                models.PatrolDeviceBinding.employee_name.ilike(q),
+                models.PatrolDeviceBinding.site_name.ilike(q),
+            )
+        )
+    if employee_name and employee_name.strip():
+        conds.append(models.PatrolDeviceBinding.employee_name.ilike(f"%{employee_name.strip()}%"))
+    if site_name and site_name.strip():
+        conds.append(models.PatrolDeviceBinding.site_name.ilike(f"%{site_name.strip()}%"))
+    normalized_status = (status or "all").strip().lower()
+    if normalized_status == "active":
+        conds.append(models.PatrolDeviceBinding.is_active.is_(True))
+    elif normalized_status == "inactive":
+        conds.append(models.PatrolDeviceBinding.is_active.is_(False))
+
+    if conds:
+        stmt = stmt.where(and_(*conds))
+        count_stmt = count_stmt.where(and_(*conds))
+
+    stmt = stmt.order_by(models.PatrolDeviceBinding.bound_at.desc(), models.PatrolDeviceBinding.id.desc()).limit(limit).offset(offset)
+    items = (await db.scalars(stmt)).all()
+    total = int(await db.scalar(count_stmt) or 0)
+    return schemas.PatrolDeviceBindingAdminListResponse(
+        items=[_binding_to_admin_item(i) for i in items],
+        total=total,
+    )
+
+
+@router.patch("/device-bindings/{binding_id}/password", response_model=schemas.PatrolDeviceBindingAdminItem, summary="後台重設裝置密碼")
+async def admin_reset_device_binding_password(
+    binding_id: int,
+    body: schemas.PatrolDeviceBindingPasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    binding = await db.get(models.PatrolDeviceBinding, binding_id)
+    if not binding:
+        raise HTTPException(status_code=404, detail="裝置綁定不存在")
+    hashed = _pwd_context.hash(body.password.strip())
+    binding.password_hash = hashed
+    if not binding.bound_at:
+        binding.bound_at = datetime.utcnow()
+    await db.execute(
+        models.PatrolDevice.__table__.update()
+        .where(
+            models.PatrolDevice.device_public_id == binding.device_public_id,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .values(password_hash=hashed)
+    )
+    await db.flush()
+    return _binding_to_admin_item(binding)
+
+
+@router.post("/device-bindings/{binding_id}/unbind", response_model=schemas.PatrolUnbindResponse, summary="後台解除裝置綁定")
+async def admin_unbind_device_binding(
+    binding_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    binding = await db.get(models.PatrolDeviceBinding, binding_id)
+    if not binding:
+        raise HTTPException(status_code=404, detail="裝置綁定不存在")
+    if not binding.is_active:
+        return schemas.PatrolUnbindResponse(success=True, message="裝置已是解除狀態", unbound_at=datetime.utcnow())
+    now = datetime.utcnow()
+    binding.is_active = False
+    await db.execute(
+        models.PatrolDevice.__table__.update()
+        .where(
+            models.PatrolDevice.device_public_id == binding.device_public_id,
+            models.PatrolDevice.is_active.is_(True),
+        )
+        .values(is_active=False, unbound_at=now)
+    )
+    await db.flush()
+    return schemas.PatrolUnbindResponse(success=True, message="後台解除綁定成功", unbound_at=now)
 
 
 @router.get("/points", response_model=list[schemas.PatrolPointRead], summary="巡邏點列表")

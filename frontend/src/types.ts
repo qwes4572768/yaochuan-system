@@ -392,7 +392,19 @@ export interface PatrolDeviceBindRequest {
 }
 
 export interface PatrolDeviceStartRequest {
-  employee_name: string
+  employee_name?: string
+  password: string
+  device_fingerprint: DeviceFingerprint
+}
+
+export interface PatrolDeviceLoginRequest {
+  employee_name?: string
+  password: string
+  device_fingerprint: DeviceFingerprint
+}
+
+export interface PatrolDeviceUnbindRequest {
+  employee_name?: string
   password: string
   device_fingerprint: DeviceFingerprint
 }
@@ -453,4 +465,34 @@ export interface PatrolLog {
   checkin_time: string
   checkin_ampm: string
   created_at: string
+}
+
+export interface PatrolDeviceBindingAdminItem {
+  id: number
+  device_public_id: string
+  is_active: boolean
+  employee_name?: string
+  site_name?: string
+  bound_at?: string
+  last_seen_at?: string
+  ua?: string
+  platform?: string
+  browser?: string
+  language?: string
+  timezone?: string
+  screen?: string
+  password_set: boolean
+  device_info?: {
+    ua?: string
+    platform?: string
+    browser?: string
+    lang?: string
+    screen?: string
+    tz?: string
+  }
+}
+
+export interface PatrolDeviceBindingAdminListResponse {
+  items: PatrolDeviceBindingAdminItem[]
+  total: number
 }

@@ -15,6 +15,17 @@ export class ApiError extends Error {
   }
 }
 
+export function formatApiError(error: unknown, fallback = '操作失敗'): string {
+  if (error instanceof ApiError) {
+    const status = error.status ?? 'unknown'
+    return `status=${status}：${error.message || fallback}`
+  }
+  if (error instanceof Error) {
+    return error.message || fallback
+  }
+  return fallback
+}
+
 export function getAuthToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY)
 }
@@ -534,8 +545,18 @@ export const patrolApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  loginByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceLoginRequest) =>
+    request<import('./types').PatrolBoundLoginResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/login`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   startByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceStartRequest) =>
     request<import('./types').PatrolBoundLoginResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/start`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unbindByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceUnbindRequest) =>
+    request<import('./types').PatrolUnbindResponse>(`/patrol/device/${encodeURIComponent(devicePublicId)}/unbind`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -626,6 +647,26 @@ export const patrolApi = {
     if (params?.point_code?.trim()) q.set('point_code', params.point_code.trim())
     return `${BASE}/patrol/logs/export/excel${q.toString() ? `?${q.toString()}` : ''}`
   },
+  listDeviceBindings: (params?: { query?: string; employee_name?: string; site_name?: string; status?: 'active' | 'inactive' | 'all'; limit?: number; offset?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.query?.trim()) q.set('query', params.query.trim())
+    if (params?.employee_name?.trim()) q.set('employee_name', params.employee_name.trim())
+    if (params?.site_name?.trim()) q.set('site_name', params.site_name.trim())
+    if (params?.status) q.set('status', params.status)
+    if (params?.limit != null) q.set('limit', String(params.limit))
+    if (params?.offset != null) q.set('offset', String(params.offset))
+    return request<import('./types').PatrolDeviceBindingAdminListResponse>(`/patrol/device-bindings${q.toString() ? `?${q.toString()}` : ''}`)
+  },
+  resetDeviceBindingPassword: (id: number, password: string) =>
+    request<import('./types').PatrolDeviceBindingAdminItem>(`/patrol/device-bindings/${id}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ password }),
+    }),
+  adminUnbindDeviceBinding: (id: number) =>
+    request<import('./types').PatrolUnbindResponse>(`/patrol/device-bindings/${id}/unbind`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 }
 
 /** 傻瓜會計 - 保全核心計算（升級版：應發/扣款/實發） */

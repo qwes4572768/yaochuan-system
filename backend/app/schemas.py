@@ -981,9 +981,49 @@ class PatrolDeviceBindRequest(BaseModel):
 
 
 class PatrolDeviceStartRequest(BaseModel):
-    employee_name: str = Field(..., min_length=1, max_length=80)
+    employee_name: Optional[str] = Field(None, min_length=1, max_length=80)
     password: str = Field(..., min_length=1, max_length=128)
     device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolDeviceLoginRequest(BaseModel):
+    employee_name: Optional[str] = Field(None, min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=128)
+    device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolDeviceUnbindRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=128)
+    employee_name: Optional[str] = Field(None, min_length=1, max_length=80)
+    device_fingerprint: DeviceFingerprintPayload
+
+
+class PatrolDeviceBindingAdminItem(BaseModel):
+    id: int
+    device_public_id: str
+    is_active: bool
+    employee_name: Optional[str] = None
+    site_name: Optional[str] = None
+    bound_at: Optional[datetime] = None
+    last_seen_at: Optional[datetime] = None
+    ua: Optional[str] = None
+    platform: Optional[str] = None
+    browser: Optional[str] = None
+    language: Optional[str] = None
+    timezone: Optional[str] = None
+    screen: Optional[str] = None
+    password_set: bool = False
+    device_info: Optional[Dict[str, Optional[str]]] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PatrolDeviceBindingAdminListResponse(BaseModel):
+    items: List[PatrolDeviceBindingAdminItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class PatrolDeviceBindingPasswordResetRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 class PatrolPointBase(BaseModel):

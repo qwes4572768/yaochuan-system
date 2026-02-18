@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ApiError, patrolApi, setPatrolDeviceToken } from '../api'
+import { ApiError, formatApiError, patrolApi, setPatrolDeviceToken } from '../api'
 import type { DeviceFingerprint, PatrolDeviceStatus } from '../types'
 
 function detectBrowser(ua: string): string {
@@ -38,7 +38,10 @@ export default function PatrolBindPermanentPage() {
   const [employeeName, setEmployeeName] = useState('')
   const [siteName, setSiteName] = useState('')
   const [password, setPassword] = useState('')
-  const [starting, setStarting] = useState(false)
+  const [loginEmployeeName, setLoginEmployeeName] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
+  const [unbinding, setUnbinding] = useState(false)
   const [binding, setBinding] = useState(false)
 
   async function loadStatus() {
@@ -52,14 +55,15 @@ export default function PatrolBindPermanentPage() {
       setStatus(res)
       if (res.employee_name) setEmployeeName((prev) => prev || res.employee_name || '')
       if (res.site_name) setSiteName((prev) => prev || res.site_name || '')
+      if (res.employee_name) setLoginEmployeeName((prev) => prev || res.employee_name || '')
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setNotFound(true)
         return
       }
+      setNotFound(false)
       const status = err instanceof ApiError ? (err.status ?? 'unknown') : 'unknown'
-      const message = err instanceof Error ? err.message : '未知錯誤'
-      setLoadError({ status, message })
+      setLoadError({ status, message: formatApiError(err, '讀取裝置狀態失敗') })
     } finally {
       setLoading(false)
     }
@@ -69,23 +73,23 @@ export default function PatrolBindPermanentPage() {
     void loadStatus()
   }, [devicePublicId])
 
-  async function onStart(e: FormEvent) {
+  async function onLogin(e: FormEvent) {
     e.preventDefault()
     if (!devicePublicId) return
-    setStarting(true)
+    setLoggingIn(true)
     setActionError('')
     try {
-      const res = await patrolApi.startByDevicePublicId(devicePublicId, {
-        employee_name: employeeName.trim(),
-        password: password.trim(),
+      const res = await patrolApi.loginByDevicePublicId(devicePublicId, {
+        employee_name: loginEmployeeName.trim() || undefined,
+        password: loginPassword.trim(),
         device_fingerprint: fingerprint,
       })
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : '開始巡邏失敗')
+      setActionError(formatApiError(err, '登入失敗'))
     } finally {
-      setStarting(false)
+      setLoggingIn(false)
     }
   }
 
@@ -104,9 +108,28 @@ export default function PatrolBindPermanentPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : '綁定失敗')
+      setActionError(formatApiError(err, '綁定失敗'))
     } finally {
       setBinding(false)
+    }
+  }
+
+  async function onUnbind() {
+    if (!devicePublicId) return
+    setUnbinding(true)
+    setActionError('')
+    try {
+      await patrolApi.unbindByDevicePublicId(devicePublicId, {
+        employee_name: loginEmployeeName.trim() || undefined,
+        password: loginPassword.trim(),
+        device_fingerprint: fingerprint,
+      })
+      setLoginPassword('')
+      await loadStatus()
+    } catch (err) {
+      setActionError(formatApiError(err, '解除綁定失敗'))
+    } finally {
+      setUnbinding(false)
     }
   }
 
@@ -135,9 +158,6 @@ export default function PatrolBindPermanentPage() {
           <p className="text-sm text-amber-200">未建立裝置資料，請先完成綁定。</p>
           <div className="flex flex-wrap gap-2">
             <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-sm">
-              前往舊版綁定流程（需一次性 code）
-            </Link>
-            <Link to="/patrol-admin/bindings" className="rounded border border-slate-500 px-3 py-2 text-sm">
               回到綁定管理頁
             </Link>
           </div>
@@ -189,34 +209,47 @@ export default function PatrolBindPermanentPage() {
         {actionError && <p className="text-sm text-rose-300">{actionError}</p>}
 
         {status?.is_bound ? (
-          <form onSubmit={onStart} className="space-y-3">
+          <div className="space-y-3">
+            <form onSubmit={onLogin} className="space-y-3">
+              <div>
+                <label className="block text-sm mb-1">員工姓名（可留空）</label>
+                <input
+                  value={loginEmployeeName}
+                  onChange={(e) => setLoginEmployeeName(e.target.value)}
+                  className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+                  placeholder="可留空，留空時僅驗證密碼"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">密碼</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  required
+                  className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loggingIn || !loginPassword.trim()}
+                className="w-full rounded bg-sky-500 text-slate-950 font-semibold py-2 disabled:opacity-60"
+              >
+                {loggingIn ? '登入中...' : '已綁定開始巡邏'}
+              </button>
+            </form>
+
             <div>
-              <label className="block text-sm mb-1">已綁定員工姓名</label>
-              <input
-                value={employeeName}
-                onChange={(e) => setEmployeeName(e.target.value)}
-                required
-                className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
-              />
+              <button
+                type="button"
+                onClick={() => void onUnbind()}
+                disabled={unbinding || !loginPassword.trim()}
+                className="w-full rounded bg-rose-500 text-white font-semibold py-2 disabled:opacity-60"
+              >
+                {unbinding ? '解除中...' : '解除綁定（需密碼）'}
+              </button>
             </div>
-            <div>
-              <label className="block text-sm mb-1">密碼</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={starting || !employeeName.trim() || !password.trim()}
-              className="w-full rounded bg-sky-500 text-slate-950 font-semibold py-2 disabled:opacity-60"
-            >
-              {starting ? '登入中...' : '已綁定開始巡邏'}
-            </button>
-          </form>
+          </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-amber-300">此永久裝置尚未綁定，請先完成綁定。</p>
@@ -257,11 +290,16 @@ export default function PatrolBindPermanentPage() {
                 {binding ? '綁定中...' : '完成綁定'}
               </button>
             </form>
-            <Link to="/patrol/bind" className="block text-sm underline text-slate-300">
-              或前往舊版綁定流程（需一次性 code）
+            <Link to="/patrol-admin/bindings/legacy" className="block text-sm underline text-slate-300">
+              前往綁定管理頁（可產生一次性 QR）
             </Link>
           </div>
         )}
+        <div className="pt-2">
+          <Link to="/patrol-admin/bindings/legacy" className="text-sm underline text-slate-300">
+            回到綁定管理頁
+          </Link>
+        </div>
       </div>
     </div>
   )

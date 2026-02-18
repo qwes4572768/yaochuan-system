@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { patrolApi, setPatrolDeviceToken } from '../api'
+import { formatApiError, patrolApi, setPatrolDeviceToken } from '../api'
 import type { DeviceFingerprint, PatrolBindingStatus } from '../types'
 
 function detectBrowser(ua: string): string {
@@ -58,7 +58,7 @@ export default function PatrolBindPage() {
           setSiteName((prev) => prev || status.site_name || '')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : '查詢綁定狀態失敗')
+        setError(formatApiError(err, '查詢綁定狀態失敗'))
       } finally {
         setCheckingStatus(false)
       }
@@ -85,9 +85,9 @@ export default function PatrolBindPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '綁定失敗'
+      const msg = formatApiError(err, '綁定失敗')
       setError(msg)
-      if (msg.includes('已過期') || msg.includes('已使用') || msg.includes('失效')) {
+      if (msg.includes('已過期') || msg.includes('已使用') || msg.includes('失效') || msg.includes('不存在')) {
         setCodeInvalidHint(true)
       }
     } finally {
@@ -108,7 +108,7 @@ export default function PatrolBindPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登入失敗')
+      setError(formatApiError(err, '登入失敗'))
     } finally {
       setLoginLoading(false)
     }
@@ -131,7 +131,7 @@ export default function PatrolBindPage() {
       setLoginPassword('')
       setPassword('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '解除綁定失敗')
+      setError(formatApiError(err, '解除綁定失敗'))
     } finally {
       setUnbindLoading(false)
     }
@@ -165,10 +165,10 @@ export default function PatrolBindPage() {
           <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 space-y-3 text-sm">
             <p className="text-amber-200">此頁需要 10 分鐘綁定碼（一次性 code）。請掃描「舊版綁定 QR」進入。</p>
             <div className="flex flex-wrap gap-2">
-              <Link to="/patrol-admin/bindings" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold">
-                回到綁定管理頁
+              <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold">
+                回到綁定 QR 管理頁
               </Link>
-              <Link to="/patrol-admin/bindings/legacy" className="rounded border border-slate-500 px-3 py-2">
+              <Link to="/patrol/bind/permanent" className="rounded border border-slate-500 px-3 py-2">
                 前往永久裝置入口
               </Link>
             </div>
@@ -211,12 +211,12 @@ export default function PatrolBindPage() {
             {error && <p className="text-sm text-rose-300">{error}</p>}
             {codeInvalidHint && (
               <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200 space-y-2">
-                <p>此綁定碼已失效或已使用。你可以重新產生綁定碼，或改用永久裝置入口。</p>
+                <p>此綁定碼已失效/不存在，請重新產生一次性綁定碼，或改用永久裝置入口（推薦）。</p>
                 <div className="flex flex-wrap gap-2">
                   <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-xs">
-                    重新產生綁定碼
+                    回到 legacy 管理頁
                   </Link>
-                  <Link to="/patrol-admin/bindings" className="rounded border border-slate-500 px-3 py-2 text-xs">
+                  <Link to="/patrol/bind/permanent" className="rounded border border-slate-500 px-3 py-2 text-xs">
                     前往永久裝置入口
                   </Link>
                 </div>

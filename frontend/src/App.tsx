@@ -17,12 +17,14 @@ import SiteHistory from './pages/SiteHistory'
 import SecurityPayroll from './pages/SecurityPayroll'
 import PatrolBindPage from './pages/PatrolBindPage'
 import PatrolBindPermanentPage from './pages/PatrolBindPermanentPage'
+import PatrolPermanentEntryGuidePage from './pages/PatrolPermanentEntryGuidePage'
 import PatrolPage from './pages/PatrolPage'
 import PatrolPublicCheckinPage from './pages/PatrolPublicCheckinPage'
 import PatrolBindingAdminPage from './pages/PatrolBindingAdminPage'
 import PatrolBindingLegacyPage from './pages/PatrolBindingLegacyPage'
 import PatrolPointsPage from './pages/PatrolPointsPage'
 import PatrolLogsPage from './pages/PatrolLogsPage'
+import PatrolDeviceBindingsAdminPage from './pages/PatrolDeviceBindingsAdminPage'
 
 function PatrolPublicCheckinRoute() {
   const { publicId = '' } = useParams()
@@ -130,6 +132,14 @@ function AppLayout() {
                 永久巡邏點 QR
               </NavLink>
               <NavLink
+                to="/patrol-admin/device-bindings"
+                className={({ isActive }) =>
+                  `px-3 py-1.5 rounded ${isActive ? 'bg-slate-600' : 'hover:bg-slate-700'}`
+                }
+              >
+                裝置綁定管理
+              </NavLink>
+              <NavLink
                 to="/patrol-admin/points"
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded ${isActive ? 'bg-slate-600' : 'hover:bg-slate-700'}`
@@ -167,6 +177,7 @@ function AppLayout() {
             <Route path="/accounting/security-payroll" element={<SecurityPayroll />} />
             <Route path="/patrol-admin/bindings" element={<PatrolBindingAdminPage />} />
             <Route path="/patrol-admin/bindings/legacy" element={<PatrolBindingLegacyPage />} />
+            <Route path="/patrol-admin/device-bindings" element={<PatrolDeviceBindingsAdminPage />} />
             <Route path="/patrol-admin/points" element={<PatrolPointsPage />} />
             <Route path="/patrol-admin/logs" element={<PatrolLogsPage />} />
           </Routes>
@@ -182,6 +193,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/patrol/bind" element={<PatrolBindPage />} />
+          <Route path="/patrol/bind/permanent" element={<PatrolPermanentEntryGuidePage />} />
           <Route path="/patrol/bind/permanent/:devicePublicId" element={<PatrolBindPermanentPage />} />
           <Route path="/patrol/checkin/:publicId" element={<PatrolPublicCheckinRoute />} />
           <Route path="/patrol" element={<PatrolPage />} />
