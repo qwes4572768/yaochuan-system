@@ -19,6 +19,7 @@ import PatrolBindPage from './pages/PatrolBindPage'
 import PatrolPage from './pages/PatrolPage'
 import PatrolPublicCheckinPage from './pages/PatrolPublicCheckinPage'
 import PatrolBindingAdminPage from './pages/PatrolBindingAdminPage'
+import PatrolBindingLegacyPage from './pages/PatrolBindingLegacyPage'
 import PatrolPointsPage from './pages/PatrolPointsPage'
 import PatrolLogsPage from './pages/PatrolLogsPage'
 
@@ -125,7 +126,7 @@ function AppLayout() {
                   `px-3 py-1.5 rounded ${isActive ? 'bg-slate-600' : 'hover:bg-slate-700'}`
                 }
               >
-                巡邏綁定 QR
+                永久巡邏點 QR
               </NavLink>
               <NavLink
                 to="/patrol-admin/points"
@@ -164,6 +165,7 @@ function AppLayout() {
             <Route path="/sites/:id/edit" element={<SiteForm />} />
             <Route path="/accounting/security-payroll" element={<SecurityPayroll />} />
             <Route path="/patrol-admin/bindings" element={<PatrolBindingAdminPage />} />
+            <Route path="/patrol-admin/bindings/legacy" element={<PatrolBindingLegacyPage />} />
             <Route path="/patrol-admin/points" element={<PatrolPointsPage />} />
             <Route path="/patrol-admin/logs" element={<PatrolLogsPage />} />
           </Routes>
