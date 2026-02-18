@@ -81,8 +81,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="保全公司管理系統 - HR",
-    description="人事管理 MVP + 案場 + 排班 P0。員工/眷屬 CRUD、勞健保試算、檔案上傳、Excel 報表、案場管理、排班與月統計。",
+    title="曜川系統 - HR",
+    description="Yaochuan HR system",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -119,13 +119,12 @@ app.include_router(patrol.router)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request, exc):
-    """未捕捉的例外回傳 detail（含 exception message），方便前端顯示與排查"""
     if isinstance(exc, HTTPException):
         raise exc
-    detail = str(exc) if exc else "伺服器發生錯誤，請稍後再試或聯絡管理員。"
+    detail = str(exc) if exc else "Internal Server Error"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"伺服器發生錯誤：{detail}"},
+        content={"detail": detail},
     )
 
 
