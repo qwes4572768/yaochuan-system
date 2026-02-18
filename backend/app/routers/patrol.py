@@ -46,8 +46,9 @@ def _build_point_checkin_url(public_id: str) -> str:
 
 
 def _build_permanent_bind_url(device_public_id: str) -> str:
+    """永久裝置入口：掃碼後由此進入，依綁定狀態分流至登入或綁定頁，避免重複綁定。"""
     base = settings.public_base_url.rstrip("/")
-    return f"{base}/patrol/bind/permanent/{quote(device_public_id)}"
+    return f"{base}/patrol/entry/permanent/{quote(device_public_id)}"
 
 
 def _extract_device_token(
