@@ -5,6 +5,16 @@ const BASE = `${API_BASE}/api`
 const AUTH_TOKEN_KEY = 'access_token'
 const PATROL_DEVICE_TOKEN_KEY = 'patrol_device_token'
 
+export class ApiError extends Error {
+  status?: number
+
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 export function getAuthToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY)
 }
@@ -44,16 +54,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       headers,
     })
   } catch (e) {
-    throw new Error(translateError(e instanceof Error ? e.message : '無法連線伺服器'))
+    throw new ApiError(translateError(e instanceof Error ? e.message : '無法連線伺服器'), 0)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()
   if (!res.ok) {
-    const err = text ? JSON.parse(text).detail || text : res.statusText
+    let err: unknown = res.statusText
+    if (text) {
+      try {
+        err = JSON.parse(text).detail || text
+      } catch {
+        err = text
+      }
+    }
     const msg = Array.isArray(err) ? err.map((e: { msg?: string }) => e?.msg || e).join(', ') : err
-    throw new Error(translateError(String(msg)))
+    throw new ApiError(translateError(String(msg)), res.status)
   }
-  return (text ? JSON.parse(text) : undefined) as T
+  try {
+    return (text ? JSON.parse(text) : undefined) as T
+  } catch {
+    throw new ApiError('回應格式錯誤', res.status)
+  }
 }
 
 export interface LoginResponse {
@@ -504,6 +525,8 @@ export const patrolApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getDeviceByPublicId: (devicePublicId: string) =>
+    request<import('./types').PatrolDeviceStatus>(`/patrol/device/${encodeURIComponent(devicePublicId)}`),
   getDeviceStatus: (devicePublicId: string) =>
     request<import('./types').PatrolDeviceStatus>(`/patrol/device/${encodeURIComponent(devicePublicId)}`),
   bindByDevicePublicId: (devicePublicId: string, data: import('./types').PatrolDeviceBindRequest) =>

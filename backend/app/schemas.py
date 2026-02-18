@@ -947,6 +947,7 @@ class PatrolBindingStatusResponse(BaseModel):
     timezone: Optional[str] = None
     password_set: bool = False
     bound_at: Optional[datetime] = None
+    device_info: Optional[Dict[str, Optional[str]]] = None
 
 
 class PatrolPermanentQrResponse(BaseModel):
@@ -969,6 +970,7 @@ class PatrolDeviceStatusResponse(BaseModel):
     timezone: Optional[str] = None
     password_set: bool = False
     bound_at: Optional[datetime] = None
+    device_info: Optional[Dict[str, Optional[str]]] = None
 
 
 class PatrolDeviceBindRequest(BaseModel):

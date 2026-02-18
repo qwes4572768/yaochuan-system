@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { patrolApi, setPatrolDeviceToken } from '../api'
 import type { DeviceFingerprint, PatrolBindingStatus } from '../types'
 
@@ -29,6 +29,7 @@ function buildFingerprint(): DeviceFingerprint {
 export default function PatrolBindPage() {
   const [params] = useSearchParams()
   const code = params.get('code') || ''
+  const hasCode = !!code
   const devicePublicId = params.get('device_public_id') || ''
   const [employeeName, setEmployeeName] = useState('')
   const [siteName, setSiteName] = useState('')
@@ -41,6 +42,7 @@ export default function PatrolBindPage() {
   const [unbindLoading, setUnbindLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [codeInvalidHint, setCodeInvalidHint] = useState(false)
   const navigate = useNavigate()
   const fingerprint = useMemo(() => buildFingerprint(), [])
 
@@ -66,10 +68,10 @@ export default function PatrolBindPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (!code) {
-      setError('缺少綁定碼，請重新掃描 QR')
       return
     }
     setError('')
+    setCodeInvalidHint(false)
     setLoading(true)
     try {
       const res = await patrolApi.bind({
@@ -83,7 +85,11 @@ export default function PatrolBindPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '綁定失敗')
+      const msg = err instanceof Error ? err.message : '綁定失敗'
+      setError(msg)
+      if (msg.includes('已過期') || msg.includes('已使用') || msg.includes('失效')) {
+        setCodeInvalidHint(true)
+      }
     } finally {
       setLoading(false)
     }
@@ -155,7 +161,21 @@ export default function PatrolBindPage() {
           )}
         </div>
 
-        {!bindingStatus?.is_bound ? (
+        {!hasCode && (
+          <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 space-y-3 text-sm">
+            <p className="text-amber-200">此頁需要 10 分鐘綁定碼（一次性 code）。請掃描「舊版綁定 QR」進入。</p>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/patrol-admin/bindings" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold">
+                回到綁定管理頁
+              </Link>
+              <Link to="/patrol-admin/bindings/legacy" className="rounded border border-slate-500 px-3 py-2">
+                前往永久裝置入口
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {hasCode && !bindingStatus?.is_bound ? (
           <form onSubmit={onSubmit} className="space-y-3">
             <div>
               <label className="block text-sm mb-1">員工姓名</label>
@@ -189,6 +209,19 @@ export default function PatrolBindPage() {
               />
             </div>
             {error && <p className="text-sm text-rose-300">{error}</p>}
+            {codeInvalidHint && (
+              <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200 space-y-2">
+                <p>此綁定碼已失效或已使用。你可以重新產生綁定碼，或改用永久裝置入口。</p>
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-xs">
+                    重新產生綁定碼
+                  </Link>
+                  <Link to="/patrol-admin/bindings" className="rounded border border-slate-500 px-3 py-2 text-xs">
+                    前往永久裝置入口
+                  </Link>
+                </div>
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading || !employeeName.trim() || !password.trim() || !siteName.trim()}
@@ -197,7 +230,7 @@ export default function PatrolBindPage() {
               {loading ? '綁定中...' : '完成綁定'}
             </button>
           </form>
-        ) : (
+        ) : hasCode ? (
           <div className="space-y-3">
             <form onSubmit={onBoundLogin} className="space-y-3">
               <div>
@@ -239,7 +272,7 @@ export default function PatrolBindPage() {
               {unbindLoading ? '解除中...' : '解除綁定'}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

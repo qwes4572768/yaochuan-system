@@ -327,6 +327,7 @@ export interface PatrolDeviceInfo {
 
 export interface PatrolBindingStatus {
   is_bound: boolean
+  device_public_id?: string
   employee_name?: string
   site_name?: string
   ua?: string
@@ -337,6 +338,14 @@ export interface PatrolBindingStatus {
   timezone?: string
   password_set: boolean
   bound_at?: string
+  device_info?: {
+    ua?: string
+    platform?: string
+    browser?: string
+    lang?: string
+    screen?: string
+    tz?: string
+  }
 }
 
 export interface PatrolBoundLoginRequest {
@@ -365,6 +374,14 @@ export interface PatrolDeviceStatus {
   timezone?: string
   password_set: boolean
   bound_at?: string
+  device_info?: {
+    ua?: string
+    platform?: string
+    browser?: string
+    lang?: string
+    screen?: string
+    tz?: string
+  }
 }
 
 export interface PatrolDeviceBindRequest {

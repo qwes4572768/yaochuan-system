@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { patrolApi, setPatrolDeviceToken } from '../api'
+import { ApiError, patrolApi, setPatrolDeviceToken } from '../api'
 import type { DeviceFingerprint, PatrolDeviceStatus } from '../types'
 
 function detectBrowser(ua: string): string {
@@ -31,8 +31,10 @@ export default function PatrolBindPermanentPage() {
   const { devicePublicId = '' } = useParams()
   const fingerprint = useMemo(() => buildFingerprint(), [])
   const [status, setStatus] = useState<PatrolDeviceStatus | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [loadError, setLoadError] = useState<{ status: number | string; message: string } | null>(null)
+  const [actionError, setActionError] = useState('')
   const [employeeName, setEmployeeName] = useState('')
   const [siteName, setSiteName] = useState('')
   const [password, setPassword] = useState('')
@@ -42,14 +44,22 @@ export default function PatrolBindPermanentPage() {
   async function loadStatus() {
     if (!devicePublicId) return
     setLoading(true)
-    setError('')
+    setNotFound(false)
+    setLoadError(null)
+    setActionError('')
     try {
-      const res = await patrolApi.getDeviceStatus(devicePublicId)
+      const res = await patrolApi.getDeviceByPublicId(devicePublicId)
       setStatus(res)
       if (res.employee_name) setEmployeeName((prev) => prev || res.employee_name || '')
       if (res.site_name) setSiteName((prev) => prev || res.site_name || '')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '讀取綁定狀態失敗')
+      if (err instanceof ApiError && err.status === 404) {
+        setNotFound(true)
+        return
+      }
+      const status = err instanceof ApiError ? (err.status ?? 'unknown') : 'unknown'
+      const message = err instanceof Error ? err.message : '未知錯誤'
+      setLoadError({ status, message })
     } finally {
       setLoading(false)
     }
@@ -63,7 +73,7 @@ export default function PatrolBindPermanentPage() {
     e.preventDefault()
     if (!devicePublicId) return
     setStarting(true)
-    setError('')
+    setActionError('')
     try {
       const res = await patrolApi.startByDevicePublicId(devicePublicId, {
         employee_name: employeeName.trim(),
@@ -73,7 +83,7 @@ export default function PatrolBindPermanentPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '開始巡邏失敗')
+      setActionError(err instanceof Error ? err.message : '開始巡邏失敗')
     } finally {
       setStarting(false)
     }
@@ -83,7 +93,7 @@ export default function PatrolBindPermanentPage() {
     e.preventDefault()
     if (!devicePublicId) return
     setBinding(true)
-    setError('')
+    setActionError('')
     try {
       const res = await patrolApi.bindByDevicePublicId(devicePublicId, {
         employee_name: employeeName.trim(),
@@ -94,18 +104,64 @@ export default function PatrolBindPermanentPage() {
       setPatrolDeviceToken(res.device_token)
       navigate('/patrol', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '綁定失敗')
+      setActionError(err instanceof Error ? err.message : '綁定失敗')
     } finally {
       setBinding(false)
     }
   }
 
-  const ua = status?.ua || fingerprint.userAgent
-  const platform = status?.platform || fingerprint.platform
-  const browser = status?.browser || fingerprint.browser
-  const language = status?.language || fingerprint.language
-  const screen = status?.screen || fingerprint.screen
-  const timezone = status?.timezone || fingerprint.timezone
+  const ua = status?.device_info?.ua || status?.ua || fingerprint.userAgent
+  const platform = status?.device_info?.platform || status?.platform || fingerprint.platform
+  const browser = status?.device_info?.browser || status?.browser || fingerprint.browser
+  const language = status?.device_info?.lang || status?.language || fingerprint.language
+  const screen = status?.device_info?.screen || status?.screen || fingerprint.screen
+  const timezone = status?.device_info?.tz || status?.timezone || fingerprint.timezone
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900/80 p-5">
+          <p className="text-sm text-slate-200">載入中…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-xl rounded-xl border border-amber-500/40 bg-slate-900/80 p-5 space-y-4">
+          <h1 className="text-xl font-semibold">永久巡邏設備入口</h1>
+          <p className="text-sm text-amber-200">未建立裝置資料，請先完成綁定。</p>
+          <div className="flex flex-wrap gap-2">
+            <Link to="/patrol-admin/bindings/legacy" className="rounded bg-sky-500 px-3 py-2 text-slate-950 font-semibold text-sm">
+              前往舊版綁定流程（需一次性 code）
+            </Link>
+            <Link to="/patrol-admin/bindings" className="rounded border border-slate-500 px-3 py-2 text-sm">
+              回到綁定管理頁
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-xl rounded-xl border border-rose-500/40 bg-slate-900/80 p-5 space-y-4">
+          <h1 className="text-xl font-semibold">永久巡邏設備入口</h1>
+          <p className="text-sm text-rose-200">載入失敗（status={loadError.status}）：{loadError.message}</p>
+          <button
+            onClick={() => void loadStatus()}
+            className="rounded bg-amber-400 text-slate-950 font-semibold px-3 py-2 text-sm"
+          >
+            重試
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
@@ -130,7 +186,7 @@ export default function PatrolBindPermanentPage() {
           )}
         </div>
 
-        {error && <p className="text-sm text-rose-300">{error}</p>}
+        {actionError && <p className="text-sm text-rose-300">{actionError}</p>}
 
         {status?.is_bound ? (
           <form onSubmit={onStart} className="space-y-3">

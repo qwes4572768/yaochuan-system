@@ -281,6 +281,14 @@ async def get_binding_status(
         timezone=device.timezone,
         password_set=bool(device.password_hash),
         bound_at=device.bound_at,
+        device_info={
+            "ua": device.user_agent,
+            "platform": device.platform,
+            "browser": device.browser,
+            "lang": device.language,
+            "screen": device.screen_size,
+            "tz": device.timezone,
+        },
     )
 
 
@@ -323,6 +331,14 @@ async def get_device_status(
         timezone=device.timezone,
         password_set=bool(device.password_hash),
         bound_at=device.bound_at,
+        device_info={
+            "ua": device.user_agent,
+            "platform": device.platform,
+            "browser": device.browser,
+            "lang": device.language,
+            "screen": device.screen_size,
+            "tz": device.timezone,
+        },
     )
 
 
