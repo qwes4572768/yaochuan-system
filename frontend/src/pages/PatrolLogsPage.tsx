@@ -2,6 +2,33 @@ import { useEffect, useState } from 'react'
 import { downloadReportExcel, patrolApi } from '../api'
 import type { PatrolLog } from '../types'
 
+const TZ = 'Asia/Taipei'
+
+/** 依 Asia/Taipei 將 checkin_at 格式為：時段（早上/下午/晚上）+ 12 小時制 hh:mm:ss */
+function formatCheckinAt(checkinAt: string | undefined): { period: string; time12: string } {
+  const fallback = { period: '-', time12: '-' }
+  if (!checkinAt) return fallback
+  const date = new Date(checkinAt)
+  if (Number.isNaN(date.getTime())) return fallback
+  const formatter = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const parts = formatter.formatToParts(date)
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '0'
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00'
+  const second = parts.find((p) => p.type === 'second')?.value ?? '00'
+  const h = parseInt(hour, 10)
+  const period = h < 12 ? '早上' : h < 18 ? '下午' : '晚上'
+  const h12 = h % 12
+  const h12Display = h12 === 0 ? 12 : h12
+  const time12 = `${String(h12Display).padStart(2, '0')}:${minute}:${second}`
+  return { period, time12 }
+}
+
 export default function PatrolLogsPage() {
   const [rows, setRows] = useState<PatrolLog[]>([])
   const [dateFrom, setDateFrom] = useState('')
@@ -74,23 +101,26 @@ export default function PatrolLogsPage() {
             <tr>
               <th className="text-left p-2">員工</th>
               <th className="text-left p-2">日期</th>
-              <th className="text-left p-2">上午/下午</th>
-              <th className="text-left p-2">時分秒</th>
+              <th className="text-left p-2">時段</th>
+              <th className="text-left p-2">時間</th>
               <th className="text-left p-2">案場</th>
               <th className="text-left p-2">巡邏點</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-slate-200">
-                <td className="p-2">{r.employee_name}</td>
-                <td className="p-2">{r.checkin_date}</td>
-                <td className="p-2">{r.checkin_ampm}</td>
-                <td className="p-2">{r.checkin_time}</td>
-                <td className="p-2">{r.site_name}</td>
-                <td className="p-2">{r.point_code} - {r.point_name}</td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const { period, time12 } = formatCheckinAt(r.checkin_at)
+              return (
+                <tr key={r.id} className="border-t border-slate-200">
+                  <td className="p-2">{r.employee_name}</td>
+                  <td className="p-2">{r.checkin_date}</td>
+                  <td className="p-2">{period}</td>
+                  <td className="p-2">{time12}</td>
+                  <td className="p-2">{r.site_name}</td>
+                  <td className="p-2">{r.point_code} - {r.point_name}</td>
+                </tr>
+              )
+            })}
             {!loading && rows.length === 0 && <tr><td className="p-3 text-slate-500" colSpan={6}>查無資料</td></tr>}
           </tbody>
         </table>

@@ -7,6 +7,7 @@ import json
 import secrets
 import uuid
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from io import BytesIO
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -1104,6 +1105,35 @@ def _apply_log_filters(
     return stmt
 
 
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+def _log_checkin_at_taiwan(log: models.PatrolLog) -> datetime:
+    """將 checkin_date + checkin_time 視為 Asia/Taipei 組合成 datetime（供列表與 Excel 一致）。"""
+    dt_naive = datetime.combine(log.checkin_date, log.checkin_time)
+    return dt_naive.replace(tzinfo=TAIPEI)
+
+
+def _period_and_time_12h(dt: datetime) -> tuple[str, str]:
+    """依 Asia/Taipei 回傳 (早上/下午/晚上, 12 小時制 hh:mm:ss)。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    h = dt.hour
+    if h < 12:
+        period = "早上"
+    elif h < 18:
+        period = "下午"
+    else:
+        period = "晚上"
+    h12 = h % 12
+    if h12 == 0:
+        h12 = 12
+    time_12h = f"{h12:02d}:{dt.minute:02d}:{dt.second:02d}"
+    return period, time_12h
+
+
 @router.get("/logs", response_model=list[schemas.PatrolLogRead], summary="巡邏紀錄列表")
 async def list_logs(
     date_from: date | None = Query(None),
@@ -1117,7 +1147,24 @@ async def list_logs(
     stmt: Select[tuple[models.PatrolLog]] = select(models.PatrolLog).order_by(models.PatrolLog.created_at.desc()).limit(limit)
     stmt = _apply_log_filters(stmt, date_from, date_to, employee_name, site_name, point_code)
     items = (await db.scalars(stmt)).all()
-    return [schemas.PatrolLogRead.model_validate(r) for r in items]
+    result = []
+    for r in items:
+        checkin_at = _log_checkin_at_taiwan(r)
+        result.append(
+            schemas.PatrolLogRead(
+                id=r.id,
+                employee_name=r.employee_name,
+                site_name=r.site_name,
+                point_code=r.point_code,
+                point_name=r.point_name,
+                checkin_date=r.checkin_date,
+                checkin_time=r.checkin_time,
+                checkin_ampm=r.checkin_ampm,
+                created_at=r.created_at,
+                checkin_at=checkin_at,
+            )
+        )
+    return result
 
 
 @router.get("/logs/export/excel", summary="匯出巡邏紀錄 Excel")
@@ -1136,13 +1183,15 @@ async def export_logs_excel(
     wb = Workbook()
     ws = wb.active
     ws.title = "巡邏紀錄"
-    ws.append(["員工名稱", "日期", "上午/下午", "時分秒", "案場", "巡邏點編號", "巡邏點名稱"])
+    ws.append(["員工名稱", "日期", "時段", "時間(12小時制)", "案場", "巡邏點編號", "巡邏點名稱"])
     for r in items:
+        checkin_at = _log_checkin_at_taiwan(r)
+        period, time_12h = _period_and_time_12h(checkin_at)
         ws.append([
             r.employee_name,
             r.checkin_date.isoformat(),
-            r.checkin_ampm,
-            r.checkin_time.isoformat(),
+            period,
+            time_12h,
             r.site_name,
             r.point_code,
             r.point_name,

@@ -477,6 +477,8 @@ export interface PatrolLog {
   checkin_time: string
   checkin_ampm: string
   created_at: string
+  /** 完整打點時間 ISO 字串（含時區），用於顯示早上/下午/晚上與 12 小時制 */
+  checkin_at?: string
 }
 
 export interface PatrolDeviceBindingAdminItem {

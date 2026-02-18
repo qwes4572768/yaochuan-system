@@ -1122,4 +1122,6 @@ class PatrolLogRead(BaseModel):
     checkin_time: time
     checkin_ampm: str
     created_at: datetime
+    """完整打點時間（Asia/Taipei），前端依此顯示早上/下午/晚上與 12 小時制時間"""
+    checkin_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
