@@ -300,6 +300,7 @@ export interface PatrolPermanentQr {
 
 export interface PatrolBindRequest {
   code: string
+  device_public_id?: string
   employee_name: string
   password: string
   site_name: string
