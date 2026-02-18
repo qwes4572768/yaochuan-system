@@ -6,8 +6,9 @@ import hmac
 import json
 import secrets
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
 from io import BytesIO
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -1003,8 +1004,13 @@ async def checkin_by_public_id(
     if not employee_name:
         raise HTTPException(status_code=422, detail="請提供 employee_id 或 employee_name")
 
-    when = body.timestamp or datetime.now()
-    ampm = "上午" if when.hour < 12 else "下午"
+    when_taipei = body.timestamp or _now_taipei()
+    if when_taipei.tzinfo is None:
+        when_taipei = when_taipei.replace(tzinfo=TAIPEI)
+    else:
+        when_taipei = when_taipei.astimezone(TAIPEI)
+    when_utc = when_taipei.astimezone(timezone.utc)
+    ampm = "早上" if when_taipei.hour < 12 else ("下午" if when_taipei.hour < 18 else "晚上")
     qr_url = _build_point_checkin_url(point.public_id)
     log = models.PatrolLog(
         device_id=None,
@@ -1014,12 +1020,12 @@ async def checkin_by_public_id(
         site_name=point.site_name or "",
         point_code=point.point_code,
         point_name=point.point_name,
-        checkin_date=when.date(),
-        checkin_time=when.time().replace(microsecond=0),
+        checkin_date=when_utc.date(),
+        checkin_time=when_utc.time().replace(microsecond=0),
         checkin_ampm=ampm,
         qr_value=qr_url,
         device_info=body.device_info,
-        created_at=datetime.utcnow(),
+        created_at=when_utc.replace(tzinfo=None),
     )
     db.add(log)
     await db.flush()
@@ -1048,8 +1054,9 @@ async def checkin(
     device = await _get_device_by_token(db, token)
     point = await _resolve_point_from_qr(db, body.qr_value)
 
-    now = datetime.now()
-    ampm = "上午" if now.hour < 12 else "下午"
+    now_taipei = _now_taipei()
+    now_utc = now_taipei.astimezone(timezone.utc)
+    ampm = "早上" if now_taipei.hour < 12 else ("下午" if now_taipei.hour < 18 else "晚上")
     log = models.PatrolLog(
         device_id=device.id,
         employee_id=None,
@@ -1058,12 +1065,12 @@ async def checkin(
         site_name=device.site_name,
         point_code=point.point_code,
         point_name=point.point_name,
-        checkin_date=now.date(),
-        checkin_time=now.time().replace(microsecond=0),
+        checkin_date=now_utc.date(),
+        checkin_time=now_utc.time().replace(microsecond=0),
         checkin_ampm=ampm,
         qr_value=body.qr_value,
         device_info=device.device_fingerprint,
-        created_at=datetime.utcnow(),
+        created_at=now_utc.replace(tzinfo=None),
     )
     db.add(log)
     await db.flush()
@@ -1108,10 +1115,16 @@ def _apply_log_filters(
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
+def _now_taipei() -> datetime:
+    """目前時間（Asia/Taipei）。"""
+    return datetime.now(TAIPEI)
+
+
 def _log_checkin_at_taiwan(log: models.PatrolLog) -> datetime:
-    """將 checkin_date + checkin_time 視為 Asia/Taipei 組合成 datetime（供列表與 Excel 一致）。"""
+    """將 checkin_date + checkin_time 視為 UTC 轉成 Asia/Taipei 的 datetime（查詢／匯出用）。"""
     dt_naive = datetime.combine(log.checkin_date, log.checkin_time)
-    return dt_naive.replace(tzinfo=TAIPEI)
+    utc_dt = dt_naive.replace(tzinfo=timezone.utc)
+    return utc_dt.astimezone(TAIPEI)
 
 
 def _period_and_time_12h(dt: datetime) -> tuple[str, str]:
