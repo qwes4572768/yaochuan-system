@@ -628,7 +628,7 @@ export const patrolApi = {
     if (!res.ok) {
       let data: Record<string, unknown> = {}
       try { if (text) data = JSON.parse(text) as Record<string, unknown> } catch { data = { detail: text } }
-      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? text || res.statusText)
+      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? (text || res.statusText))
       if ((res.status === 429 || res.status === 409) && detail) {
         throw new ApiError(translateError(detail), res.status, detail, {
           cooldown_seconds: typeof data.cooldown_seconds === 'number' ? data.cooldown_seconds : undefined,
@@ -652,7 +652,7 @@ export const patrolApi = {
     if (!res.ok) {
       let data: Record<string, unknown> = {}
       try { if (text) data = JSON.parse(text) as Record<string, unknown> } catch { data = { detail: text } }
-      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? text || res.statusText)
+      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? (text || res.statusText))
       if ((res.status === 429 || res.status === 409) && detail) {
         throw new ApiError(translateError(detail), res.status, detail, {
           cooldown_seconds: typeof data.cooldown_seconds === 'number' ? data.cooldown_seconds : undefined,
