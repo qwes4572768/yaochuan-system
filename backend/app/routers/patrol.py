@@ -13,7 +13,7 @@ from io import BytesIO
 from urllib.parse import parse_qs, quote, urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from openpyxl import Workbook
 from passlib.context import CryptContext
 from sqlalchemy import Select, and_, or_, func, select
@@ -1010,6 +1010,12 @@ async def checkin_by_public_id(
     else:
         when_taipei = when_taipei.astimezone(TAIPEI)
     when_utc = when_taipei.astimezone(timezone.utc)
+    dup = _check_duplicate_scan(
+        db, device_id=None, employee_id=employee_id, employee_name=employee_name,
+        point_id=point.id, now_utc=when_utc,
+    )
+    if dup:
+        return JSONResponse(status_code=429, content=dup)
     ampm = "早上" if when_taipei.hour < 12 else ("下午" if when_taipei.hour < 18 else "晚上")
     qr_url = _build_point_checkin_url(point.public_id)
     log = models.PatrolLog(
@@ -1056,6 +1062,12 @@ async def checkin(
 
     now_taipei = _now_taipei()
     now_utc = now_taipei.astimezone(timezone.utc)
+    dup = _check_duplicate_scan(
+        db, device_id=device.id, employee_id=None, employee_name=device.employee_name,
+        point_id=point.id, now_utc=now_utc,
+    )
+    if dup:
+        return JSONResponse(status_code=429, content=dup)
     ampm = "早上" if now_taipei.hour < 12 else ("下午" if now_taipei.hour < 18 else "晚上")
     log = models.PatrolLog(
         device_id=device.id,
@@ -1125,6 +1137,49 @@ def _log_checkin_at_taiwan(log: models.PatrolLog) -> datetime:
     dt_naive = datetime.combine(log.checkin_date, log.checkin_time)
     utc_dt = dt_naive.replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(TAIPEI)
+
+
+COOLDOWN_SECONDS = 300  # 5 分鐘內同人同一巡邏點不可重複掃碼
+
+
+def _check_duplicate_scan(
+    db: AsyncSession,
+    *,
+    device_id: int | None,
+    employee_id: int | None,
+    employee_name: str,
+    point_id: int,
+    now_utc: datetime,
+) -> dict | None:
+    """若 5 分鐘內有同人同一巡邏點紀錄，回傳錯誤內容 dict；否則回傳 None。"""
+    stmt = select(models.PatrolLog).where(models.PatrolLog.point_id == point_id)
+    if device_id is not None:
+        stmt = stmt.where(models.PatrolLog.device_id == device_id)
+    else:
+        stmt = stmt.where(models.PatrolLog.device_id.is_(None))
+        if employee_id is not None:
+            stmt = stmt.where(models.PatrolLog.employee_id == employee_id)
+        else:
+            stmt = stmt.where(
+                models.PatrolLog.employee_id.is_(None),
+                models.PatrolLog.employee_name == employee_name,
+            )
+    stmt = stmt.order_by(models.PatrolLog.created_at.desc()).limit(1)
+    last = await db.scalar(stmt)
+    if not last or not last.created_at:
+        return None
+    delta = (now_utc.replace(tzinfo=None) - last.created_at).total_seconds()
+    if delta >= COOLDOWN_SECONDS:
+        return None
+    remaining = int(COOLDOWN_SECONDS - delta)
+    last_utc = last.created_at
+    if last_utc.tzinfo is None:
+        last_utc = last_utc.replace(tzinfo=timezone.utc)
+    return {
+        "detail": "重複掃碼：請於 5 分鐘後再掃同一巡邏點",
+        "cooldown_seconds": max(1, remaining),
+        "last_scan_at": last_utc.isoformat(),
+    }
 
 
 def _period_and_time_12h(dt: datetime) -> tuple[str, str]:
