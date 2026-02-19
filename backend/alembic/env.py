@@ -1,5 +1,6 @@
 """Alembic 環境：使用 app 的 Base 與 database_url，支援 SQLite / PostgreSQL 遷移。
 路徑一律用 pathlib 解析，避免 Windows 中文路徑與編碼問題。"""
+import os
 from pathlib import Path
 import sys
 
@@ -44,6 +45,15 @@ else:
 config.set_main_option("sqlalchemy.url", sync_url)
 
 
+def _fix_db_url(url: str) -> str:
+    # 將 Render 的 postgres:// 修正為 SQLAlchemy 可用格式
+    url = url.replace("postgres://", "postgresql://", 1)
+    # 強制使用 psycopg v3 driver
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
 def run_migrations_offline() -> None:
     """離線模式：只產生 SQL，不連 DB"""
     url = config.get_main_option("sqlalchemy.url")
@@ -60,7 +70,8 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """線上模式：連 DB 執行遷移"""
     from sqlalchemy import create_engine
-    url = config.get_main_option("sqlalchemy.url")
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    url = _fix_db_url(url)
     connectable = create_engine(url)
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
