@@ -37,12 +37,23 @@ export default function PatrolDeviceBindingsAdminPage() {
   const [query, setQuery] = useState('')
   const [employee, setEmployee] = useState('')
   const [site, setSite] = useState('')
-  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active')
   const [total, setTotal] = useState(0)
   /** 詳情 modal：顯示哪一筆的裝置完整資訊（row.id） */
   const [detailRowId, setDetailRowId] = useState<number | null>(null)
 
   const logsExportUrl = useMemo(() => patrolApi.exportLogsUrl(), [])
+
+  /** status=active 時只顯示已綁定且啟用中的設備；status=all/inactive 顯示 API 回傳的完整資料 */
+  const filtered = useMemo(() => {
+    if (status !== 'active') return rows
+    return rows.filter(
+      (item) =>
+        item.is_active === true &&
+        !!item.bound_at &&
+        !item.unbound_at
+    )
+  }, [rows, status])
 
   function formatErrorWithDetail(err: unknown, fallback: string): string {
     if (err instanceof ApiError) {
@@ -147,7 +158,7 @@ export default function PatrolDeviceBindingsAdminPage() {
       }
       return text
     }
-    const rowsText = rows.map((row) => ([
+    const rowsText = filtered.map((row) => ([
       row.binding_id ?? row.id,
       row.device_public_id,
       row.employee_name ?? '',
@@ -172,7 +183,7 @@ export default function PatrolDeviceBindingsAdminPage() {
     URL.revokeObjectURL(url)
   }
 
-  const detailRow = detailRowId != null ? rows.find((r) => r.id === detailRowId) : null
+  const detailRow = detailRowId != null ? filtered.find((r) => r.id === detailRowId) : null
 
   return (
     <div className="space-y-4">
@@ -204,7 +215,7 @@ export default function PatrolDeviceBindingsAdminPage() {
           className="rounded border border-slate-300 px-3 py-2"
         >
           <option value="all">全部狀態</option>
-          <option value="active">啟用中</option>
+          <option value="active">已綁定</option>
           <option value="inactive">已解除</option>
         </select>
         <button type="submit" disabled={loading} className="rounded bg-sky-500 text-white font-semibold px-4 py-2 disabled:opacity-60">
@@ -214,7 +225,7 @@ export default function PatrolDeviceBindingsAdminPage() {
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
       <div className="flex items-center gap-2">
-        <div className="text-sm text-slate-600">共 {total} 筆</div>
+        <div className="text-sm text-slate-600">共 {filtered.length} 筆</div>
         <button
           type="button"
           onClick={onExportCsv}
@@ -248,7 +259,7 @@ export default function PatrolDeviceBindingsAdminPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {filtered.map((row) => {
               const bindingStatus = getBindingStatus(row)
               const statusConf = BINDING_STATUS_MAP[bindingStatus]
               return (
@@ -329,7 +340,7 @@ export default function PatrolDeviceBindingsAdminPage() {
                 </tr>
               )
             })}
-            {!loading && rows.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={9} className="p-3 text-slate-500">
                   查無裝置綁定資料。
