@@ -1,6 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { authApi, employeesApi, getAuthToken, patrolApi, setAuthToken } from '../api'
+import { ApiError, authApi, employeesApi, getAuthToken, patrolApi, setAuthToken } from '../api'
 import type { Employee, PatrolCheckinResponse } from '../types'
+
+function formatCheckinError(err: unknown): string {
+  if (err instanceof ApiError && err.cooldown_seconds != null) {
+    return `${err.message}（請稍後 ${err.cooldown_seconds} 秒再掃）`
+  }
+  return err instanceof Error ? err.message : '打卡失敗'
+}
 
 type Props = {
   publicId: string
@@ -68,7 +75,7 @@ export default function PatrolPublicCheckinPage({ publicId }: Props) {
       })
       setResult(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '打卡失敗')
+      setError(formatCheckinError(err))
     } finally {
       setSubmitting(false)
     }

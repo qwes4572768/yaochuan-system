@@ -1,7 +1,14 @@
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { clearPatrolDeviceToken, patrolApi } from '../api'
+import { ApiError, clearPatrolDeviceToken, patrolApi } from '../api'
 import type { PatrolCheckinResponse, PatrolDeviceInfo } from '../types'
+
+function formatCheckinError(err: unknown): string {
+  if (err instanceof ApiError && err.cooldown_seconds != null) {
+    return `${err.message}（請稍後 ${err.cooldown_seconds} 秒再掃）`
+  }
+  return err instanceof Error ? err.message : '打點失敗'
+}
 
 export default function PatrolPage() {
   const [deviceInfo, setDeviceInfo] = useState<PatrolDeviceInfo | null>(null)
@@ -35,7 +42,7 @@ export default function PatrolPage() {
       const res = await patrolApi.checkin(qrValue)
       setResult(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '打點失敗')
+      setError(formatCheckinError(err))
     } finally {
       setLoading(false)
     }

@@ -1010,7 +1010,7 @@ async def checkin_by_public_id(
     else:
         when_taipei = when_taipei.astimezone(TAIPEI)
     when_utc = when_taipei.astimezone(timezone.utc)
-    dup = _check_duplicate_scan(
+    dup = await _check_duplicate_scan(
         db, device_id=None, employee_id=employee_id, employee_name=employee_name,
         point_id=point.id, now_utc=when_utc,
     )
@@ -1062,7 +1062,7 @@ async def checkin(
 
     now_taipei = _now_taipei()
     now_utc = now_taipei.astimezone(timezone.utc)
-    dup = _check_duplicate_scan(
+    dup = await _check_duplicate_scan(
         db, device_id=device.id, employee_id=None, employee_name=device.employee_name,
         point_id=point.id, now_utc=now_utc,
     )
@@ -1142,7 +1142,7 @@ def _log_checkin_at_taiwan(log: models.PatrolLog) -> datetime:
 COOLDOWN_SECONDS = 300  # 5 分鐘內同人同一巡邏點不可重複掃碼
 
 
-def _check_duplicate_scan(
+async def _check_duplicate_scan(
     db: AsyncSession,
     *,
     device_id: int | None,

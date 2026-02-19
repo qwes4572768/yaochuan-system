@@ -8,12 +8,20 @@ const PATROL_DEVICE_TOKEN_KEY = 'patrol_device_token'
 export class ApiError extends Error {
   status?: number
   rawDetail?: string
+  /** 429/409 重複掃碼時，剩餘需等待秒數 */
+  cooldown_seconds?: number
+  /** 429/409 重複掃碼時，上次掃碼時間 ISO */
+  last_scan_at?: string
 
-  constructor(message: string, status?: number, rawDetail?: string) {
+  constructor(message: string, status?: number, rawDetail?: string, extra?: { cooldown_seconds?: number; last_scan_at?: string }) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.rawDetail = rawDetail
+    if (extra) {
+      this.cooldown_seconds = extra.cooldown_seconds
+      this.last_scan_at = extra.last_scan_at
+    }
   }
 }
 
@@ -618,8 +626,16 @@ export const patrolApi = {
     })
     const text = await res.text()
     if (!res.ok) {
-      const err = text ? JSON.parse(text).detail || text : res.statusText
-      throw new Error(translateError(String(err)))
+      let data: Record<string, unknown> = {}
+      try { if (text) data = JSON.parse(text) as Record<string, unknown> } catch { data = { detail: text } }
+      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? text || res.statusText)
+      if ((res.status === 429 || res.status === 409) && detail) {
+        throw new ApiError(translateError(detail), res.status, detail, {
+          cooldown_seconds: typeof data.cooldown_seconds === 'number' ? data.cooldown_seconds : undefined,
+          last_scan_at: typeof data.last_scan_at === 'string' ? data.last_scan_at : undefined,
+        })
+      }
+      throw new Error(translateError(detail))
     }
     return (text ? JSON.parse(text) : undefined) as import('./types').PatrolCheckinResponse
   },
@@ -634,8 +650,16 @@ export const patrolApi = {
     })
     const text = await res.text()
     if (!res.ok) {
-      const err = text ? JSON.parse(text).detail || text : res.statusText
-      throw new Error(translateError(String(err)))
+      let data: Record<string, unknown> = {}
+      try { if (text) data = JSON.parse(text) as Record<string, unknown> } catch { data = { detail: text } }
+      const detail = typeof data.detail === 'string' ? data.detail : String(data.detail ?? text || res.statusText)
+      if ((res.status === 429 || res.status === 409) && detail) {
+        throw new ApiError(translateError(detail), res.status, detail, {
+          cooldown_seconds: typeof data.cooldown_seconds === 'number' ? data.cooldown_seconds : undefined,
+          last_scan_at: typeof data.last_scan_at === 'string' ? data.last_scan_at : undefined,
+        })
+      }
+      throw new Error(translateError(detail))
     }
     return (text ? JSON.parse(text) : undefined) as import('./types').PatrolCheckinResponse
   },
