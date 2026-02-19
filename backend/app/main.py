@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app import config as app_config
 from app.db_schema_fix import ensure_schema
+from app.db_schema_fix_pg import ensure_pg_schema
 from app.routers import (
     auth,
     employees,
@@ -50,6 +51,9 @@ async def lifespan(app: FastAPI):
     if is_sqlite:
         # SQLite：啟動時自動補齊缺欄，避免 no such column
         ensure_schema()
+    else:
+        # PostgreSQL：確保 schema 設定
+        await ensure_pg_schema()
 
     # ✅ 確保自動備份目錄存在
     backup_dir = app_config.settings.backup_dir
