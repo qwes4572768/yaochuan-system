@@ -8,7 +8,6 @@ from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app import config as app_config
-from app.database import init_db
 from app.db_schema_fix import ensure_schema
 from app.routers import (
     auth,
@@ -43,16 +42,25 @@ async def _daily_backup_job():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    # SQLite：啟動時自動補齊缺欄（含 employees 各公司別 pay_mode），避免 no such column
-    ensure_schema()
-    # 確保自動備份目錄存在（路徑由 backup_job 以 BASE_DIR 為基準解析）
+    # ✅ Render/正式環境（PostgreSQL）不要在啟動時自動建表/補欄位
+    # ✅ 本機（SQLite）才需要 ensure_schema 這種自動補欄位
+    db_url = str(app_config.settings.database_url or "").lower()
+
+    is_sqlite = db_url.startswith("sqlite")
+    if is_sqlite:
+        # SQLite：啟動時自動補齊缺欄，避免 no such column
+        ensure_schema()
+
+    # ✅ 確保自動備份目錄存在
     backup_dir = app_config.settings.backup_dir
     if not backup_dir.is_absolute():
         backup_dir = app_config.BASE_DIR / backup_dir
     backup_dir.mkdir(parents=True, exist_ok=True)
+
+    # ✅ 排程啟動
     global _scheduler
     _scheduler = AsyncIOScheduler()
+
     # 每日自動備份：解析 backup_schedule_time (HH:MM)
     try:
         parts = app_config.settings.backup_schedule_time.strip().split(":")
@@ -74,8 +82,11 @@ async def lifespan(app: FastAPI):
             id="hr_daily_backup",
             replace_existing=True,
         )
+
     _scheduler.start()
+
     yield
+
     if _scheduler:
         _scheduler.shutdown(wait=False)
 
