@@ -92,7 +92,7 @@ app.add_middleware(
     allow_origins=[
         "https://yaochuan-system-1.onrender.com",
         "https://yaochuan.com.tw",
-        "http://localhost:5173",
+        "https://www.yaochuan.com.tw",
     ],
     allow_credentials=True,
     allow_methods=["*"],
