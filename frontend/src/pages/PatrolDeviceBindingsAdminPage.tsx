@@ -38,7 +38,6 @@ export default function PatrolDeviceBindingsAdminPage() {
   const [employee, setEmployee] = useState('')
   const [site, setSite] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active')
-  const [total, setTotal] = useState(0)
   /** 詳情 modal：顯示哪一筆的裝置完整資訊（row.id） */
   const [detailRowId, setDetailRowId] = useState<number | null>(null)
 
@@ -94,7 +93,6 @@ export default function PatrolDeviceBindingsAdminPage() {
         limit: 500,
       })
       setRows(res.items)
-      setTotal(res.total)
     } catch (err) {
       setError(formatErrorWithDetail(err, '讀取裝置綁定列表失敗'))
     } finally {
