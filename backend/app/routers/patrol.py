@@ -132,6 +132,17 @@ async def _resolve_point_from_qr(db: AsyncSession, qr_value: str) -> models.Patr
     raise HTTPException(status_code=404, detail="巡邏點不存在")
 
 
+DEFAULT_PATROL_SITE_NAME = "未分類(舊資料)"
+
+
+async def _get_default_patrol_site_id(db: AsyncSession) -> int | None:
+    """取得預設案場「未分類(舊資料)」的 id，若不存在回傳 None。"""
+    r = await db.scalar(
+        select(models.Site.id).where(models.Site.name == DEFAULT_PATROL_SITE_NAME).limit(1)
+    )
+    return r
+
+
 def _point_to_read(point: models.PatrolPoint) -> schemas.PatrolPointRead:
     return schemas.PatrolPointRead(
         id=point.id,
@@ -906,11 +917,14 @@ async def create_point(
     point_name = (body.name or body.point_name or "").strip()
     if not point_name:
         raise HTTPException(status_code=422, detail="巡邏點名稱不可為空")
+    site_id = body.site_id
+    if site_id is None:
+        site_id = await _get_default_patrol_site_id(db)
     point = models.PatrolPoint(
         public_id=str(uuid.uuid4()),
         point_code=body.point_code.strip(),
         point_name=point_name,
-        site_id=body.site_id,
+        site_id=site_id,
         site_name=(body.site_name or "").strip() or None,
         location=(body.location or "").strip() or None,
         is_active=bool(body.is_active),
@@ -1022,6 +1036,7 @@ async def checkin_by_public_id(
         device_id=None,
         employee_id=employee_id,
         point_id=point.id,
+        site_id=point.site_id,
         employee_name=employee_name,
         site_name=point.site_name or "",
         point_code=point.point_code,
@@ -1073,6 +1088,7 @@ async def checkin(
         device_id=device.id,
         employee_id=None,
         point_id=point.id,
+        site_id=point.site_id,
         employee_name=device.employee_name,
         site_name=device.site_name,
         point_code=point.point_code,

@@ -442,6 +442,7 @@ class PatrolDevice(Base):
     __tablename__ = "patrol_devices"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    site_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True, comment="案場分類")
     binding_code_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_binding_codes.id", ondelete="SET NULL"), nullable=True, index=True)
     device_public_id: Mapped[Optional[str]] = mapped_column(String(36), index=True, comment="裝置永久識別碼 UUID")
     device_token: Mapped[str] = mapped_column(String(140), unique=True, index=True, comment="伺服器簽發設備 token")
@@ -515,6 +516,7 @@ class PatrolLog(Base):
     device_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_devices.id", ondelete="SET NULL"), nullable=True, index=True)
     employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True)
     point_id: Mapped[Optional[int]] = mapped_column(ForeignKey("patrol_points.id", ondelete="SET NULL"), nullable=True, index=True)
+    site_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True, comment="案場分類（由巡邏點帶入）")
     employee_name: Mapped[str] = mapped_column(String(80), index=True)
     site_name: Mapped[str] = mapped_column(String(120), index=True)
     point_code: Mapped[str] = mapped_column(String(80), index=True)
