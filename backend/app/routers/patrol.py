@@ -797,7 +797,7 @@ async def list_device_bindings(
     query: str | None = Query(None),
     employee_name: str | None = Query(None),
     site_name: str | None = Query(None),
-    status: str | None = Query(None, description="active/inactive/all"),
+    status: str | None = Query("active", description="active/inactive/all"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -819,9 +819,12 @@ async def list_device_bindings(
         conds.append(models.PatrolDeviceBinding.employee_name.ilike(f"%{employee_name.strip()}%"))
     if site_name and site_name.strip():
         conds.append(models.PatrolDeviceBinding.site_name.ilike(f"%{site_name.strip()}%"))
-    normalized_status = (status or "all").strip().lower()
+    normalized_status = (status or "active").strip().lower()
     if normalized_status == "active":
+        # 只顯示已綁定、未解除、未停用
         conds.append(models.PatrolDeviceBinding.is_active.is_(True))
+        conds.append(models.PatrolDeviceBinding.bound_at.is_not(None))
+        conds.append(models.PatrolDeviceBinding.is_bound.is_(True))
     elif normalized_status == "inactive":
         conds.append(models.PatrolDeviceBinding.is_active.is_(False))
 
